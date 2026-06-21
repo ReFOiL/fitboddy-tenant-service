@@ -7,6 +7,7 @@ class TenantResponseFactory:
     def from_domain_profile(profile: DiscoveryProfile) -> DiscoveryProfileResponse:
         return DiscoveryProfileResponse(
             user_id=profile.user_id,
+            display_name=profile.display_name,
             role=profile.role,
             is_visible=profile.is_visible,
             looking_for_trainer=profile.looking_for_trainer,
@@ -20,6 +21,7 @@ class TenantResponseFactory:
             relation_id=relation.relation_id,
             trainer_user_id=relation.trainer_user_id,
             client_user_id=relation.client_user_id,
+            client_display_name=relation.client_display_name,
             status=relation.status,
             source=relation.source,
             created_at=relation.created_at,

@@ -5,6 +5,7 @@ from datetime import datetime
 @dataclass(frozen=True)
 class DiscoveryProfile:
     user_id: str
+    display_name: str | None
     role: str
     is_visible: bool
     looking_for_trainer: bool
@@ -17,6 +18,7 @@ class TrainerClientRelation:
     relation_id: str
     trainer_user_id: str
     client_user_id: str
+    client_display_name: str | None
     status: str
     source: str
     created_at: datetime

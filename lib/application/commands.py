@@ -33,6 +33,16 @@ class LeaveRelationCommand:
 class ListTrainerClientsCommand:
     trainer_user_id: str
     status: str
+    page: int | None = None
+    page_size: int | None = None
+    search: str | None = None
+
+
+@dataclass(frozen=True)
+class ListDiscoveryProfilesCommand:
+    page: int | None = None
+    page_size: int | None = None
+    search: str | None = None
 
 
 @dataclass(frozen=True)

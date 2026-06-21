@@ -40,6 +40,7 @@ class ProfileAccessCheckRequest(BaseModel):
 
 class DiscoveryProfileResponse(BaseModel):
     user_id: str
+    display_name: str | None = None
     role: str
     is_visible: bool
     looking_for_trainer: bool
@@ -51,6 +52,7 @@ class TrainerClientRelationResponse(BaseModel):
     relation_id: str
     trainer_user_id: str
     client_user_id: str
+    client_display_name: str | None = None
     status: str
     source: str
     created_at: datetime

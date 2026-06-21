@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+from uuid import uuid4
 
 from presentation.http.main import app
 
@@ -41,6 +42,29 @@ def test_list_clients_looking_for_trainer() -> None:
     assert response.status_code == 200
     clients = response.json()
     assert any(item["user_id"] == "client_1" for item in clients)
+
+
+def test_list_trainers_supports_pagination_and_search() -> None:
+    token = f"trainer_page_{uuid4().hex}"
+    trainer_a = f"{token}_a"
+    trainer_b = f"{token}_b"
+    client.put(
+        f"/api/v1/marketplace/users/{trainer_a}/profile",
+        json={"role": "trainer", "is_visible": True, "looking_for_trainer": False},
+    )
+    client.put(
+        f"/api/v1/marketplace/users/{trainer_b}/profile",
+        json={"role": "trainer", "is_visible": True, "looking_for_trainer": False},
+    )
+
+    response = client.get(f"/api/v1/marketplace/trainers?page=1&page_size=1&search={token}")
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert payload[0]["user_id"] in {trainer_a, trainer_b}
+    assert response.headers["x-total-count"] == "2"
+    assert response.headers["x-page"] == "1"
+    assert response.headers["x-page-size"] == "1"
 
 
 def test_create_accept_leave_relation_flow() -> None:
@@ -250,6 +274,67 @@ def test_trainer_closed_statuses_are_separated() -> None:
     assert ended_list.status_code == 200
     assert len(ended_list.json()) == 1
     assert ended_list.json()[0]["client_user_id"] == "client_7b"
+
+
+def test_trainer_clients_support_pagination_search_and_source_filter() -> None:
+    trainer_id = f"trainer_page_filter_{uuid4().hex}"
+    direct_client_id = f"client_direct_{uuid4().hex}"
+    invite_client_id = f"client_invite_{uuid4().hex}"
+
+    client.put(
+        f"/api/v1/marketplace/users/{trainer_id}/profile",
+        json={"role": "trainer", "is_visible": True, "looking_for_trainer": False},
+    )
+    client.put(
+        f"/api/v1/marketplace/users/{direct_client_id}/profile",
+        json={"role": "client", "is_visible": True, "looking_for_trainer": True},
+    )
+    client.put(
+        f"/api/v1/marketplace/users/{invite_client_id}/profile",
+        json={"role": "client", "is_visible": True, "looking_for_trainer": True},
+    )
+
+    direct_relation = client.post(
+        "/api/v1/marketplace/relations",
+        json={
+            "acting_user_id": trainer_id,
+            "trainer_user_id": trainer_id,
+            "client_user_id": direct_client_id,
+            "mode": "direct",
+        },
+    )
+    assert direct_relation.status_code == 201
+
+    invite_relation = client.post(
+        "/api/v1/marketplace/relations",
+        json={
+            "acting_user_id": trainer_id,
+            "trainer_user_id": trainer_id,
+            "client_user_id": invite_client_id,
+            "mode": "invite",
+        },
+    )
+    assert invite_relation.status_code == 201
+    invite_relation_id = invite_relation.json()["relation_id"]
+
+    accept_invite = client.post(
+        f"/api/v1/marketplace/relations/{invite_relation_id}/accept",
+        json={"acting_user_id": invite_client_id},
+    )
+    assert accept_invite.status_code == 200
+
+    response = client.get(
+        f"/api/v1/marketplace/trainers/{trainer_id}/clients"
+        f"?status=active&page=1&page_size=1&search={invite_client_id}"
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert payload[0]["client_user_id"] == invite_client_id
+    assert payload[0]["source"] == "invite"
+    assert response.headers["x-total-count"] == "1"
+    assert response.headers["x-page"] == "1"
+    assert response.headers["x-page-size"] == "1"
 
 
 def test_trainer_funnel_metrics() -> None:

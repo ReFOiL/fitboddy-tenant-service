@@ -12,11 +12,13 @@ from application.commands import (
     GetClientActiveRelationCommand,
     GetTrainerFunnelCommand,
     LeaveRelationCommand,
+    ListDiscoveryProfilesCommand,
     ListIncomingInvitesCommand,
     ListTrainerClientsCommand,
     UpsertDiscoveryProfileCommand,
 )
 from application.errors import ProfileNotFoundError, RelationNotFoundError, ValidationError
+from application.gateways import ProfileGateway
 from application.models import DiscoveryProfileModel, TrainerClientRelationModel
 from application.repositories import DiscoveryProfileRepository, TrainerClientRelationRepository
 from domain.entities import DiscoveryProfile, TrainerClientRelation, TrainerFunnelMetrics
@@ -27,10 +29,11 @@ class TenantService:
     _ALLOWED_RELATION_MODES = {"invite", "direct"}
     _ALLOWED_RELATION_STATUSES = {"invited", "active", "declined", "ended", "left"}
 
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, profile_gateway: ProfileGateway | None = None) -> None:
         self._session = session
         self._profiles = DiscoveryProfileRepository(session)
         self._relations = TrainerClientRelationRepository(session)
+        self._profile_gateway = profile_gateway
 
     def upsert_profile(self, command: UpsertDiscoveryProfileCommand) -> DiscoveryProfile:
         self._ensure_role_supported(command.role)
@@ -48,11 +51,24 @@ class TenantService:
         self._session.commit()
         return self._to_domain_profile(profile)
 
-    def list_trainers(self) -> list[DiscoveryProfile]:
-        return [self._to_domain_profile(item) for item in self._profiles.list_visible_trainers()]
+    def list_trainers(self, command: ListDiscoveryProfilesCommand) -> tuple[list[DiscoveryProfile], int]:
+        search = self._normalize_search(command.search)
+        profiles = self._profiles.list_visible_trainers()
+        names_map = self._resolve_names([profile.user_id for profile in profiles])
+        filtered = self._filter_profiles_by_name(profiles, names_map, search)
+        paged_profiles = self._paginate_collection(filtered, command.page, command.page_size)
+        return [self._to_domain_profile(item, names_map.get(item.user_id)) for item in paged_profiles], len(filtered)
 
-    def list_clients_looking_for_trainer(self) -> list[DiscoveryProfile]:
-        return [self._to_domain_profile(item) for item in self._profiles.list_clients_looking_for_trainer()]
+    def list_clients_looking_for_trainer(
+        self,
+        command: ListDiscoveryProfilesCommand,
+    ) -> tuple[list[DiscoveryProfile], int]:
+        search = self._normalize_search(command.search)
+        profiles = self._profiles.list_clients_looking_for_trainer()
+        names_map = self._resolve_names([profile.user_id for profile in profiles])
+        filtered = self._filter_profiles_by_name(profiles, names_map, search)
+        paged_profiles = self._paginate_collection(filtered, command.page, command.page_size)
+        return [self._to_domain_profile(item, names_map.get(item.user_id)) for item in paged_profiles], len(filtered)
 
     def create_relation(self, command: CreateRelationCommand) -> TrainerClientRelation:
         self._ensure_relation_mode_supported(command.mode)
@@ -172,20 +188,24 @@ class TenantService:
         self._session.commit()
         return self._to_domain_relation(relation)
 
-    def list_trainer_clients(self, command: ListTrainerClientsCommand) -> list[TrainerClientRelation]:
+    def list_trainer_clients(self, command: ListTrainerClientsCommand) -> tuple[list[TrainerClientRelation], int]:
         if command.status not in self._ALLOWED_RELATION_STATUSES:
             raise ValidationError("unsupported relation status")
-        if command.status == "ended":
-            return [
-                self._to_domain_relation(item)
-                for item in self._relations.list_by_trainer_statuses(command.trainer_user_id, ["ended", "left"])
-            ]
         if command.status == "left":
-            return []
-        return [
-            self._to_domain_relation(item)
-            for item in self._relations.list_by_trainer(command.trainer_user_id, command.status)
-        ]
+            return [], 0
+
+        statuses = ["ended", "left"] if command.status == "ended" else [command.status]
+        search = self._normalize_search(command.search)
+        relations = self._relations.list_by_trainer_statuses(
+            command.trainer_user_id,
+            statuses,
+        )
+        names_map = self._resolve_names([relation.client_user_id for relation in relations])
+        filtered_relations = self._filter_relations_by_name(relations, names_map, search)
+        paged_relations = self._paginate_collection(filtered_relations, command.page, command.page_size)
+        return [self._to_domain_relation(item, names_map.get(item.client_user_id)) for item in paged_relations], len(
+            filtered_relations
+        )
 
     def check_profile_access(self, command: CheckProfileAccessCommand) -> DiscoveryProfile | None:
         profile = self._profiles.find_by_id(command.user_id)
@@ -211,6 +231,57 @@ class TenantService:
             raise ValidationError("unsupported relation mode")
 
     @staticmethod
+    def _normalize_search(search: str | None) -> str | None:
+        if search is None:
+            return None
+        normalized = search.strip()
+        return normalized or None
+
+    def _resolve_names(self, user_ids: list[str]) -> dict[str, str]:
+        if self._profile_gateway is None:
+            return {}
+        return self._profile_gateway.get_full_names_by_user_ids(user_ids)
+
+    @staticmethod
+    def _filter_profiles_by_name(
+        profiles: list[DiscoveryProfileModel],
+        names_map: dict[str, str],
+        search: str | None,
+    ) -> list[DiscoveryProfileModel]:
+        if search is None:
+            return profiles
+        lowered = search.lower()
+        return [
+            profile
+            for profile in profiles
+            if lowered in names_map.get(profile.user_id, "").lower() or lowered in profile.user_id.lower()
+        ]
+
+    @staticmethod
+    def _filter_relations_by_name(
+        relations: list[TrainerClientRelationModel],
+        names_map: dict[str, str],
+        search: str | None,
+    ) -> list[TrainerClientRelationModel]:
+        if search is None:
+            return relations
+        lowered = search.lower()
+        return [
+            relation
+            for relation in relations
+            if lowered in names_map.get(relation.client_user_id, "").lower() or lowered in relation.client_user_id.lower()
+        ]
+
+    @staticmethod
+    def _paginate_collection[T](items: list[T], page: int | None, page_size: int | None) -> list[T]:
+        if page is None and page_size is None:
+            return items
+        if page is None or page_size is None:
+            raise ValidationError("page and page_size should be passed together")
+        offset = (page - 1) * page_size
+        return items[offset : offset + page_size]
+
+    @staticmethod
     def _ensure_actor_is_relation_participant(actor_user_id: str, relation: TrainerClientRelationModel) -> None:
         if actor_user_id not in {relation.trainer_user_id, relation.client_user_id}:
             raise ValidationError("actor is not relation participant")
@@ -223,9 +294,10 @@ class TenantService:
             raise ValidationError("only trainer can send invite")
 
     @staticmethod
-    def _to_domain_profile(model: DiscoveryProfileModel) -> DiscoveryProfile:
+    def _to_domain_profile(model: DiscoveryProfileModel, display_name: str | None = None) -> DiscoveryProfile:
         return DiscoveryProfile(
             user_id=model.user_id,
+            display_name=display_name,
             role=model.role,
             is_visible=model.is_visible,
             looking_for_trainer=model.looking_for_trainer,
@@ -234,11 +306,12 @@ class TenantService:
         )
 
     @staticmethod
-    def _to_domain_relation(model: TrainerClientRelationModel) -> TrainerClientRelation:
+    def _to_domain_relation(model: TrainerClientRelationModel, client_display_name: str | None = None) -> TrainerClientRelation:
         return TrainerClientRelation(
             relation_id=model.relation_id,
             trainer_user_id=model.trainer_user_id,
             client_user_id=model.client_user_id,
+            client_display_name=client_display_name,
             status=model.status,
             source=model.source,
             created_at=model.created_at,

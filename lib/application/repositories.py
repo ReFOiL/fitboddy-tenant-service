@@ -29,21 +29,51 @@ class DiscoveryProfileRepository:
         self._session.flush()
         return existing
 
-    def list_visible_trainers(self) -> list[DiscoveryProfileModel]:
+    def list_visible_trainers(
+        self,
+        *,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> list[DiscoveryProfileModel]:
         statement = (
             select(DiscoveryProfileModel)
             .where(DiscoveryProfileModel.role == "trainer", DiscoveryProfileModel.is_visible.is_(True))
             .order_by(DiscoveryProfileModel.updated_at.desc())
         )
+        if limit is not None:
+            statement = statement.offset(offset).limit(limit)
         return list(self._session.scalars(statement).all())
 
-    def list_clients_looking_for_trainer(self) -> list[DiscoveryProfileModel]:
+    def count_visible_trainers(self) -> int:
+        statement = select(func.count(DiscoveryProfileModel.user_id)).where(
+            DiscoveryProfileModel.role == "trainer",
+            DiscoveryProfileModel.is_visible.is_(True),
+        )
+        count = self._session.scalar(statement)
+        return int(count or 0)
+
+    def list_clients_looking_for_trainer(
+        self,
+        *,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> list[DiscoveryProfileModel]:
         statement = (
             select(DiscoveryProfileModel)
             .where(DiscoveryProfileModel.role == "client", DiscoveryProfileModel.looking_for_trainer.is_(True))
             .order_by(DiscoveryProfileModel.updated_at.desc())
         )
+        if limit is not None:
+            statement = statement.offset(offset).limit(limit)
         return list(self._session.scalars(statement).all())
+
+    def count_clients_looking_for_trainer(self) -> int:
+        statement = select(func.count(DiscoveryProfileModel.user_id)).where(
+            DiscoveryProfileModel.role == "client",
+            DiscoveryProfileModel.looking_for_trainer.is_(True),
+        )
+        count = self._session.scalar(statement)
+        return int(count or 0)
 
 
 class TrainerClientRelationRepository:
@@ -86,7 +116,14 @@ class TrainerClientRelationRepository:
         )
         return list(self._session.scalars(statement).all())
 
-    def list_by_trainer_statuses(self, trainer_user_id: str, statuses: list[str]) -> list[TrainerClientRelationModel]:
+    def list_by_trainer_statuses(
+        self,
+        trainer_user_id: str,
+        statuses: list[str],
+        *,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> list[TrainerClientRelationModel]:
         statement = (
             select(TrainerClientRelationModel)
             .where(
@@ -95,6 +132,8 @@ class TrainerClientRelationRepository:
             )
             .order_by(TrainerClientRelationModel.updated_at.desc())
         )
+        if limit is not None:
+            statement = statement.offset(offset).limit(limit)
         return list(self._session.scalars(statement).all())
 
     def list_incoming_invites(self, client_user_id: str) -> list[TrainerClientRelationModel]:
@@ -122,3 +161,4 @@ class TrainerClientRelationRepository:
             statement = statement.where(TrainerClientRelationModel.source == source)
         count = self._session.scalar(statement)
         return int(count or 0)
+

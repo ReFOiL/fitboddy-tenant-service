@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Query, Request, Response, status
 
 from presentation.http.schemas import (
     AcceptRelationRequest,
@@ -16,6 +16,8 @@ from presentation.http.schemas import (
 
 
 class TenantRoutes:
+    _MAX_PAGE_SIZE = 50
+
     def __init__(self) -> None:
         self.router = APIRouter(prefix="/api/v1", tags=["marketplace"])
         self.router.add_api_route(
@@ -95,12 +97,36 @@ class TenantRoutes:
         return request.app.state.tenant_handler.upsert_profile(user_id, payload)
 
     @staticmethod
-    def list_trainers(request: Request) -> list[DiscoveryProfileResponse]:
-        return request.app.state.tenant_handler.list_trainers()
+    def list_trainers(
+        request: Request,
+        response: Response,
+        page: int | None = Query(default=None, ge=1),
+        page_size: int | None = Query(default=None, ge=1, le=_MAX_PAGE_SIZE),
+        search: str | None = Query(default=None, min_length=1, max_length=64),
+    ) -> list[DiscoveryProfileResponse]:
+        profiles, total = request.app.state.tenant_handler.list_trainers(
+            page=page,
+            page_size=page_size,
+            search=search,
+        )
+        TenantRoutes._set_pagination_headers(response, page, page_size, total)
+        return profiles
 
     @staticmethod
-    def list_clients_looking_for_trainer(request: Request) -> list[DiscoveryProfileResponse]:
-        return request.app.state.tenant_handler.list_clients_looking_for_trainer()
+    def list_clients_looking_for_trainer(
+        request: Request,
+        response: Response,
+        page: int | None = Query(default=None, ge=1),
+        page_size: int | None = Query(default=None, ge=1, le=_MAX_PAGE_SIZE),
+        search: str | None = Query(default=None, min_length=1, max_length=64),
+    ) -> list[DiscoveryProfileResponse]:
+        profiles, total = request.app.state.tenant_handler.list_clients_looking_for_trainer(
+            page=page,
+            page_size=page_size,
+            search=search,
+        )
+        TenantRoutes._set_pagination_headers(response, page, page_size, total)
+        return profiles
 
     @staticmethod
     def create_relation(request: Request, payload: CreateRelationRequest) -> TrainerClientRelationResponse:
@@ -118,9 +144,23 @@ class TenantRoutes:
 
     @staticmethod
     def list_trainer_clients(
-        request: Request, trainer_user_id: str, status: str = "active"
+        request: Request,
+        response: Response,
+        trainer_user_id: str,
+        status: str = "active",
+        page: int | None = Query(default=None, ge=1),
+        page_size: int | None = Query(default=None, ge=1, le=_MAX_PAGE_SIZE),
+        search: str | None = Query(default=None, min_length=1, max_length=64),
     ) -> list[TrainerClientRelationResponse]:
-        return request.app.state.tenant_handler.list_trainer_clients(trainer_user_id, status)
+        relations, total = request.app.state.tenant_handler.list_trainer_clients(
+            trainer_user_id,
+            status,
+            page=page,
+            page_size=page_size,
+            search=search,
+        )
+        TenantRoutes._set_pagination_headers(response, page, page_size, total)
+        return relations
 
     @staticmethod
     def list_incoming_invites(request: Request, client_user_id: str) -> list[TrainerClientRelationResponse]:
@@ -146,3 +186,11 @@ class TenantRoutes:
     ) -> CompatMembershipCheckResponse:
         _ = tenant_id
         return request.app.state.tenant_handler.compat_check_membership(payload)
+
+    @staticmethod
+    def _set_pagination_headers(response: Response, page: int | None, page_size: int | None, total: int) -> None:
+        if page is None or page_size is None:
+            return
+        response.headers["X-Total-Count"] = str(total)
+        response.headers["X-Page"] = str(page)
+        response.headers["X-Page-Size"] = str(page_size)

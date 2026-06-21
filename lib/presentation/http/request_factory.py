@@ -5,6 +5,7 @@ from application.commands import (
     GetClientActiveRelationCommand,
     GetTrainerFunnelCommand,
     LeaveRelationCommand,
+    ListDiscoveryProfilesCommand,
     ListIncomingInvitesCommand,
     ListTrainerClientsCommand,
     UpsertDiscoveryProfileCommand,
@@ -49,6 +50,30 @@ class TenantRequestFactory:
     @staticmethod
     def to_list_trainer_clients_command(trainer_user_id: str, status: str) -> ListTrainerClientsCommand:
         return ListTrainerClientsCommand(trainer_user_id=trainer_user_id, status=status)
+
+    @staticmethod
+    def to_list_trainer_clients_with_filters_command(
+        trainer_user_id: str,
+        status: str,
+        page: int | None,
+        page_size: int | None,
+        search: str | None,
+    ) -> ListTrainerClientsCommand:
+        return ListTrainerClientsCommand(
+            trainer_user_id=trainer_user_id,
+            status=status,
+            page=page,
+            page_size=page_size,
+            search=search,
+        )
+
+    @staticmethod
+    def to_list_discovery_profiles_command(
+        page: int | None,
+        page_size: int | None,
+        search: str | None,
+    ) -> ListDiscoveryProfilesCommand:
+        return ListDiscoveryProfilesCommand(page=page, page_size=page_size, search=search)
 
     @staticmethod
     def to_list_incoming_invites_command(client_user_id: str) -> ListIncomingInvitesCommand:
