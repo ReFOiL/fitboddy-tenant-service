@@ -11,6 +11,7 @@ from presentation.http.schemas import (
     ProfileAccessCheckResponse,
     TrainerClientRelationResponse,
     TrainerFunnelResponse,
+    TrainerPublicationStatusResponse,
     UpsertDiscoveryProfileRequest,
 )
 
@@ -65,6 +66,12 @@ class TenantRoutes:
             self.get_trainer_funnel,
             methods=["GET"],
             response_model=TrainerFunnelResponse,
+        )
+        self.router.add_api_route(
+            "/marketplace/trainers/{trainer_user_id}/publication-status",
+            self.get_trainer_publication_status,
+            methods=["GET"],
+            response_model=TrainerPublicationStatusResponse,
         )
         self.router.add_api_route(
             "/marketplace/clients/{client_user_id}/invites",
@@ -173,6 +180,10 @@ class TenantRoutes:
     @staticmethod
     def get_trainer_funnel(request: Request, trainer_user_id: str) -> TrainerFunnelResponse:
         return request.app.state.tenant_handler.get_trainer_funnel(trainer_user_id)
+
+    @staticmethod
+    def get_trainer_publication_status(request: Request, trainer_user_id: str) -> TrainerPublicationStatusResponse:
+        return request.app.state.tenant_handler.get_trainer_publication_status(trainer_user_id)
 
     @staticmethod
     def check_profile_access(

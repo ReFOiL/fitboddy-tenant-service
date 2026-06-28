@@ -61,6 +61,11 @@ class GetTrainerFunnelCommand:
 
 
 @dataclass(frozen=True)
+class GetTrainerPublicationStatusCommand:
+    trainer_user_id: str
+
+
+@dataclass(frozen=True)
 class CheckProfileAccessCommand:
     user_id: str
     allowed_roles: list[str]

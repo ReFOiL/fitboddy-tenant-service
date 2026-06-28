@@ -41,6 +41,7 @@ class ProfileAccessCheckRequest(BaseModel):
 class DiscoveryProfileResponse(BaseModel):
     user_id: str
     display_name: str | None = None
+    login: str | None = None
     role: str
     is_visible: bool
     looking_for_trainer: bool
@@ -51,7 +52,9 @@ class DiscoveryProfileResponse(BaseModel):
 class TrainerClientRelationResponse(BaseModel):
     relation_id: str
     trainer_user_id: str
+    trainer_login: str | None = None
     client_user_id: str
+    client_login: str | None = None
     client_display_name: str | None = None
     status: str
     source: str
@@ -67,6 +70,11 @@ class TrainerFunnelResponse(BaseModel):
     invites_declined: int
     active_clients: int
     invite_acceptance_rate: float
+
+
+class TrainerPublicationStatusResponse(BaseModel):
+    trainer_user_id: str
+    is_published: bool
 
 
 class CompatMembershipCheckResponse(BaseModel):

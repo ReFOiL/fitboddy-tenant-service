@@ -14,6 +14,7 @@ from presentation.http.schemas import (
     ProfileAccessCheckResponse,
     TrainerClientRelationResponse,
     TrainerFunnelResponse,
+    TrainerPublicationStatusResponse,
     UpsertDiscoveryProfileRequest,
 )
 
@@ -174,6 +175,20 @@ class TenantHttpHandler:
                     self._request_factory.to_get_trainer_funnel_command(trainer_user_id)
                 )
                 return self._response_factory.from_domain_trainer_funnel(funnel)
+        except TenantError as exc:
+            self._error_translator.raise_http_error(exc)
+        raise AssertionError("unreachable")
+
+    def get_trainer_publication_status(self, trainer_user_id: str) -> TrainerPublicationStatusResponse:
+        try:
+            with self._runtime.tenant_service_scope() as tenant_service:
+                is_published = tenant_service.get_trainer_publication_status(
+                    self._request_factory.to_get_trainer_publication_status_command(trainer_user_id)
+                )
+                return TrainerPublicationStatusResponse(
+                    trainer_user_id=trainer_user_id,
+                    is_published=is_published,
+                )
         except TenantError as exc:
             self._error_translator.raise_http_error(exc)
         raise AssertionError("unreachable")

@@ -8,6 +8,7 @@ class TenantResponseFactory:
         return DiscoveryProfileResponse(
             user_id=profile.user_id,
             display_name=profile.display_name,
+            login=profile.login,
             role=profile.role,
             is_visible=profile.is_visible,
             looking_for_trainer=profile.looking_for_trainer,
@@ -20,7 +21,9 @@ class TenantResponseFactory:
         return TrainerClientRelationResponse(
             relation_id=relation.relation_id,
             trainer_user_id=relation.trainer_user_id,
+            trainer_login=relation.trainer_login,
             client_user_id=relation.client_user_id,
+            client_login=relation.client_login,
             client_display_name=relation.client_display_name,
             status=relation.status,
             source=relation.source,

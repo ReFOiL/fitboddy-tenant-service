@@ -33,6 +33,26 @@ def test_upsert_profile_and_list_trainers() -> None:
     assert any(item["user_id"] == "trainer_1" for item in trainers)
 
 
+def test_list_trainers_returns_only_published_profiles() -> None:
+    visible_trainer_id = f"trainer_visible_{uuid4().hex}"
+    hidden_trainer_id = f"trainer_hidden_{uuid4().hex}"
+
+    client.put(
+        f"/api/v1/marketplace/users/{visible_trainer_id}/profile",
+        json={"role": "trainer", "is_visible": True, "looking_for_trainer": False},
+    )
+    client.put(
+        f"/api/v1/marketplace/users/{hidden_trainer_id}/profile",
+        json={"role": "trainer", "is_visible": False, "looking_for_trainer": False},
+    )
+
+    trainers_response = client.get("/api/v1/marketplace/trainers")
+    assert trainers_response.status_code == 200
+    trainer_ids = {item["user_id"] for item in trainers_response.json()}
+    assert visible_trainer_id in trainer_ids
+    assert hidden_trainer_id not in trainer_ids
+
+
 def test_list_clients_looking_for_trainer() -> None:
     client.put(
         "/api/v1/marketplace/users/client_1/profile",
@@ -65,6 +85,31 @@ def test_list_trainers_supports_pagination_and_search() -> None:
     assert response.headers["x-total-count"] == "2"
     assert response.headers["x-page"] == "1"
     assert response.headers["x-page-size"] == "1"
+
+
+def test_get_trainer_publication_status() -> None:
+    trainer_id = f"trainer_publication_status_{uuid4().hex}"
+    client.put(
+        f"/api/v1/marketplace/users/{trainer_id}/profile",
+        json={"role": "trainer", "is_visible": False, "looking_for_trainer": False},
+    )
+
+    hidden_response = client.get(f"/api/v1/marketplace/trainers/{trainer_id}/publication-status")
+    assert hidden_response.status_code == 200
+    assert hidden_response.json() == {"trainer_user_id": trainer_id, "is_published": False}
+
+    client.put(
+        f"/api/v1/marketplace/users/{trainer_id}/profile",
+        json={"role": "trainer", "is_visible": True, "looking_for_trainer": False},
+    )
+
+    published_response = client.get(f"/api/v1/marketplace/trainers/{trainer_id}/publication-status")
+    assert published_response.status_code == 200
+    assert published_response.json() == {"trainer_user_id": trainer_id, "is_published": True}
+
+    missing_response = client.get("/api/v1/marketplace/trainers/missing_trainer/publication-status")
+    assert missing_response.status_code == 200
+    assert missing_response.json() == {"trainer_user_id": "missing_trainer", "is_published": False}
 
 
 def test_create_accept_leave_relation_flow() -> None:

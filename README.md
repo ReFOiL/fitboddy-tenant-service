@@ -24,8 +24,11 @@
 - `GET /api/v1/marketplace/trainers/{trainer_user_id}/clients?status=declined` - отклоненные приглашения тренера
 - `GET /api/v1/marketplace/trainers/{trainer_user_id}/clients?status=ended` - завершенные активные связи тренера
 - `GET /api/v1/marketplace/trainers/{trainer_user_id}/funnel` - бизнес-метрики воронки (`invites_sent`, `invites_pending`, `invites_accepted`, `invites_declined`, `active_clients`, `invite_acceptance_rate`)
+- `GET /api/v1/marketplace/trainers/{trainer_user_id}/publication-status` - статус публикации тренера (`is_published`)
 - `GET /api/v1/marketplace/clients/{client_user_id}/invites` - входящие приглашения клиента
 - `POST /api/v1/marketplace/profiles/check` - проверить существование профиля и роль (`exists`, `role`)
+
+Ответы discovery/relations дополнительно включают `login` (если доступен из `auth-service`).
 
 Правила:
 - `invite` может создавать только тренер (`acting_user_id == trainer_user_id`).

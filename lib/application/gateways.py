@@ -35,3 +35,36 @@ class ProfileGateway:
             if isinstance(user_id, str) and isinstance(full_name, str) and full_name.strip():
                 result[user_id] = full_name.strip()
         return result
+
+
+class AuthGateway:
+    def __init__(self, auth_service_url: str) -> None:
+        self._auth_service_url = auth_service_url.rstrip("/")
+
+    def get_logins_by_user_ids(self, user_ids: list[str]) -> dict[str, str]:
+        if not user_ids:
+            return {}
+        payload = json.dumps({"user_ids": user_ids}).encode("utf-8")
+        req = request.Request(
+            f"{self._auth_service_url}/api/v1/auth/internal/summaries",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with request.urlopen(req, timeout=5) as response:
+                body = json.loads(response.read().decode("utf-8"))
+        except (error.URLError, error.HTTPError, json.JSONDecodeError):
+            return {}
+        items = body.get("items")
+        if not isinstance(items, list):
+            return {}
+        result: dict[str, str] = {}
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            user_id = item.get("user_id")
+            login = item.get("login")
+            if isinstance(user_id, str) and isinstance(login, str) and login.strip():
+                result[user_id] = login.strip()
+        return result

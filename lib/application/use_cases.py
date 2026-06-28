@@ -11,6 +11,7 @@ from application.commands import (
     CreateRelationCommand,
     GetClientActiveRelationCommand,
     GetTrainerFunnelCommand,
+    GetTrainerPublicationStatusCommand,
     LeaveRelationCommand,
     ListDiscoveryProfilesCommand,
     ListIncomingInvitesCommand,
@@ -18,7 +19,7 @@ from application.commands import (
     UpsertDiscoveryProfileCommand,
 )
 from application.errors import ProfileNotFoundError, RelationNotFoundError, ValidationError
-from application.gateways import ProfileGateway
+from application.gateways import AuthGateway, ProfileGateway
 from application.models import DiscoveryProfileModel, TrainerClientRelationModel
 from application.repositories import DiscoveryProfileRepository, TrainerClientRelationRepository
 from domain.entities import DiscoveryProfile, TrainerClientRelation, TrainerFunnelMetrics
@@ -29,11 +30,17 @@ class TenantService:
     _ALLOWED_RELATION_MODES = {"invite", "direct"}
     _ALLOWED_RELATION_STATUSES = {"invited", "active", "declined", "ended", "left"}
 
-    def __init__(self, session: Session, profile_gateway: ProfileGateway | None = None) -> None:
+    def __init__(
+        self,
+        session: Session,
+        profile_gateway: ProfileGateway | None = None,
+        auth_gateway: AuthGateway | None = None,
+    ) -> None:
         self._session = session
         self._profiles = DiscoveryProfileRepository(session)
         self._relations = TrainerClientRelationRepository(session)
         self._profile_gateway = profile_gateway
+        self._auth_gateway = auth_gateway
 
     def upsert_profile(self, command: UpsertDiscoveryProfileCommand) -> DiscoveryProfile:
         self._ensure_role_supported(command.role)
@@ -54,10 +61,19 @@ class TenantService:
     def list_trainers(self, command: ListDiscoveryProfilesCommand) -> tuple[list[DiscoveryProfile], int]:
         search = self._normalize_search(command.search)
         profiles = self._profiles.list_visible_trainers()
-        names_map = self._resolve_names([profile.user_id for profile in profiles])
+        profile_user_ids = [profile.user_id for profile in profiles]
+        names_map = self._resolve_names(profile_user_ids)
+        logins_map = self._resolve_logins(profile_user_ids)
         filtered = self._filter_profiles_by_name(profiles, names_map, search)
         paged_profiles = self._paginate_collection(filtered, command.page, command.page_size)
-        return [self._to_domain_profile(item, names_map.get(item.user_id)) for item in paged_profiles], len(filtered)
+        return [
+            self._to_domain_profile(
+                item,
+                display_name=names_map.get(item.user_id),
+                login=logins_map.get(item.user_id),
+            )
+            for item in paged_profiles
+        ], len(filtered)
 
     def list_clients_looking_for_trainer(
         self,
@@ -65,10 +81,19 @@ class TenantService:
     ) -> tuple[list[DiscoveryProfile], int]:
         search = self._normalize_search(command.search)
         profiles = self._profiles.list_clients_looking_for_trainer()
-        names_map = self._resolve_names([profile.user_id for profile in profiles])
+        profile_user_ids = [profile.user_id for profile in profiles]
+        names_map = self._resolve_names(profile_user_ids)
+        logins_map = self._resolve_logins(profile_user_ids)
         filtered = self._filter_profiles_by_name(profiles, names_map, search)
         paged_profiles = self._paginate_collection(filtered, command.page, command.page_size)
-        return [self._to_domain_profile(item, names_map.get(item.user_id)) for item in paged_profiles], len(filtered)
+        return [
+            self._to_domain_profile(
+                item,
+                display_name=names_map.get(item.user_id),
+                login=logins_map.get(item.user_id),
+            )
+            for item in paged_profiles
+        ], len(filtered)
 
     def create_relation(self, command: CreateRelationCommand) -> TrainerClientRelation:
         self._ensure_relation_mode_supported(command.mode)
@@ -110,19 +135,42 @@ class TenantService:
             self._session.flush()
 
         self._session.commit()
-        return self._to_domain_relation(relation)
+        relation_logins = self._resolve_logins([relation.trainer_user_id, relation.client_user_id])
+        return self._to_domain_relation(
+            relation,
+            trainer_login=relation_logins.get(relation.trainer_user_id),
+            client_login=relation_logins.get(relation.client_user_id),
+        )
 
     def list_incoming_invites(self, command: ListIncomingInvitesCommand) -> list[TrainerClientRelation]:
+        relations = self._relations.list_incoming_invites(command.client_user_id)
+        relation_user_ids = list(
+            {
+                user_id
+                for relation in relations
+                for user_id in (relation.trainer_user_id, relation.client_user_id)
+            }
+        )
+        logins_map = self._resolve_logins(relation_user_ids)
         return [
-            self._to_domain_relation(item)
-            for item in self._relations.list_incoming_invites(command.client_user_id)
+            self._to_domain_relation(
+                item,
+                trainer_login=logins_map.get(item.trainer_user_id),
+                client_login=logins_map.get(item.client_user_id),
+            )
+            for item in relations
         ]
 
     def get_client_active_relation(self, command: GetClientActiveRelationCommand) -> TrainerClientRelation:
         relation = self._relations.find_active_by_client(command.client_user_id)
         if relation is None:
             raise RelationNotFoundError("active relation not found for client")
-        return self._to_domain_relation(relation)
+        relation_logins = self._resolve_logins([relation.trainer_user_id, relation.client_user_id])
+        return self._to_domain_relation(
+            relation,
+            trainer_login=relation_logins.get(relation.trainer_user_id),
+            client_login=relation_logins.get(relation.client_user_id),
+        )
 
     def get_trainer_funnel(self, command: GetTrainerFunnelCommand) -> TrainerFunnelMetrics:
         invites_pending = self._relations.count_by_trainer_statuses(
@@ -156,6 +204,12 @@ class TenantService:
             invite_acceptance_rate=invite_acceptance_rate,
         )
 
+    def get_trainer_publication_status(self, command: GetTrainerPublicationStatusCommand) -> bool:
+        profile = self._profiles.find_by_id(command.trainer_user_id)
+        if profile is None:
+            return False
+        return profile.role == "trainer" and profile.is_visible
+
     def accept_relation(self, command: AcceptRelationCommand) -> TrainerClientRelation:
         relation = self._relations.find_by_id(command.relation_id)
         if relation is None:
@@ -174,7 +228,12 @@ class TenantService:
             client_profile.updated_at = now
             self._session.flush()
         self._session.commit()
-        return self._to_domain_relation(relation)
+        relation_logins = self._resolve_logins([relation.trainer_user_id, relation.client_user_id])
+        return self._to_domain_relation(
+            relation,
+            trainer_login=relation_logins.get(relation.trainer_user_id),
+            client_login=relation_logins.get(relation.client_user_id),
+        )
 
     def leave_relation(self, command: LeaveRelationCommand) -> TrainerClientRelation:
         relation = self._relations.find_by_id(command.relation_id)
@@ -186,7 +245,12 @@ class TenantService:
         relation.status = "declined" if relation.status == "invited" else "ended"
         relation.updated_at = datetime.now(UTC).replace(tzinfo=None)
         self._session.commit()
-        return self._to_domain_relation(relation)
+        relation_logins = self._resolve_logins([relation.trainer_user_id, relation.client_user_id])
+        return self._to_domain_relation(
+            relation,
+            trainer_login=relation_logins.get(relation.trainer_user_id),
+            client_login=relation_logins.get(relation.client_user_id),
+        )
 
     def list_trainer_clients(self, command: ListTrainerClientsCommand) -> tuple[list[TrainerClientRelation], int]:
         if command.status not in self._ALLOWED_RELATION_STATUSES:
@@ -201,11 +265,25 @@ class TenantService:
             statuses,
         )
         names_map = self._resolve_names([relation.client_user_id for relation in relations])
+        relation_user_ids = list(
+            {
+                user_id
+                for relation in relations
+                for user_id in (relation.trainer_user_id, relation.client_user_id)
+            }
+        )
+        logins_map = self._resolve_logins(relation_user_ids)
         filtered_relations = self._filter_relations_by_name(relations, names_map, search)
         paged_relations = self._paginate_collection(filtered_relations, command.page, command.page_size)
-        return [self._to_domain_relation(item, names_map.get(item.client_user_id)) for item in paged_relations], len(
-            filtered_relations
-        )
+        return [
+            self._to_domain_relation(
+                item,
+                client_display_name=names_map.get(item.client_user_id),
+                trainer_login=logins_map.get(item.trainer_user_id),
+                client_login=logins_map.get(item.client_user_id),
+            )
+            for item in paged_relations
+        ], len(filtered_relations)
 
     def check_profile_access(self, command: CheckProfileAccessCommand) -> DiscoveryProfile | None:
         profile = self._profiles.find_by_id(command.user_id)
@@ -241,6 +319,11 @@ class TenantService:
         if self._profile_gateway is None:
             return {}
         return self._profile_gateway.get_full_names_by_user_ids(user_ids)
+
+    def _resolve_logins(self, user_ids: list[str]) -> dict[str, str]:
+        if self._auth_gateway is None:
+            return {}
+        return self._auth_gateway.get_logins_by_user_ids(user_ids)
 
     @staticmethod
     def _filter_profiles_by_name(
@@ -294,10 +377,15 @@ class TenantService:
             raise ValidationError("only trainer can send invite")
 
     @staticmethod
-    def _to_domain_profile(model: DiscoveryProfileModel, display_name: str | None = None) -> DiscoveryProfile:
+    def _to_domain_profile(
+        model: DiscoveryProfileModel,
+        display_name: str | None = None,
+        login: str | None = None,
+    ) -> DiscoveryProfile:
         return DiscoveryProfile(
             user_id=model.user_id,
             display_name=display_name,
+            login=login,
             role=model.role,
             is_visible=model.is_visible,
             looking_for_trainer=model.looking_for_trainer,
@@ -306,11 +394,18 @@ class TenantService:
         )
 
     @staticmethod
-    def _to_domain_relation(model: TrainerClientRelationModel, client_display_name: str | None = None) -> TrainerClientRelation:
+    def _to_domain_relation(
+        model: TrainerClientRelationModel,
+        client_display_name: str | None = None,
+        trainer_login: str | None = None,
+        client_login: str | None = None,
+    ) -> TrainerClientRelation:
         return TrainerClientRelation(
             relation_id=model.relation_id,
             trainer_user_id=model.trainer_user_id,
+            trainer_login=trainer_login,
             client_user_id=model.client_user_id,
+            client_login=client_login,
             client_display_name=client_display_name,
             status=model.status,
             source=model.source,

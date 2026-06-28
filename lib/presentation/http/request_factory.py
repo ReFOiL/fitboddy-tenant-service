@@ -4,6 +4,7 @@ from application.commands import (
     CreateRelationCommand,
     GetClientActiveRelationCommand,
     GetTrainerFunnelCommand,
+    GetTrainerPublicationStatusCommand,
     LeaveRelationCommand,
     ListDiscoveryProfilesCommand,
     ListIncomingInvitesCommand,
@@ -86,6 +87,10 @@ class TenantRequestFactory:
     @staticmethod
     def to_get_trainer_funnel_command(trainer_user_id: str) -> GetTrainerFunnelCommand:
         return GetTrainerFunnelCommand(trainer_user_id=trainer_user_id)
+
+    @staticmethod
+    def to_get_trainer_publication_status_command(trainer_user_id: str) -> GetTrainerPublicationStatusCommand:
+        return GetTrainerPublicationStatusCommand(trainer_user_id=trainer_user_id)
 
     @staticmethod
     def to_check_profile_access_command(payload: CompatMembershipCheckRequest) -> CheckProfileAccessCommand:

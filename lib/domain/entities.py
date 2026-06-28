@@ -6,6 +6,7 @@ from datetime import datetime
 class DiscoveryProfile:
     user_id: str
     display_name: str | None
+    login: str | None
     role: str
     is_visible: bool
     looking_for_trainer: bool
@@ -17,7 +18,9 @@ class DiscoveryProfile:
 class TrainerClientRelation:
     relation_id: str
     trainer_user_id: str
+    trainer_login: str | None
     client_user_id: str
+    client_login: str | None
     client_display_name: str | None
     status: str
     source: str

@@ -6,7 +6,7 @@ from sqlalchemy import text
 
 from application.config import Settings
 from application.db import DatabaseManager
-from application.gateways import ProfileGateway
+from application.gateways import AuthGateway, ProfileGateway
 from application.use_cases import TenantService
 
 
@@ -15,12 +15,13 @@ class TenantApplicationRuntime:
         self._settings = settings
         self._db_manager = DatabaseManager(settings.database_url)
         self._profile_gateway = ProfileGateway(settings.profile_service_url)
+        self._auth_gateway = AuthGateway(settings.auth_service_url)
 
     @contextmanager
     def tenant_service_scope(self):
         session = self._db_manager.create_session()
         try:
-            yield TenantService(session=session, profile_gateway=self._profile_gateway)
+            yield TenantService(session=session, profile_gateway=self._profile_gateway, auth_gateway=self._auth_gateway)
         finally:
             session.close()
 
