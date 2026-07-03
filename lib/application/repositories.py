@@ -52,30 +52,6 @@ class DiscoveryProfileRepository:
         count = self._session.scalar(statement)
         return int(count or 0)
 
-    def list_clients_looking_for_trainer(
-        self,
-        *,
-        offset: int = 0,
-        limit: int | None = None,
-    ) -> list[DiscoveryProfileModel]:
-        statement = (
-            select(DiscoveryProfileModel)
-            .where(DiscoveryProfileModel.role == "client", DiscoveryProfileModel.looking_for_trainer.is_(True))
-            .order_by(DiscoveryProfileModel.updated_at.desc())
-        )
-        if limit is not None:
-            statement = statement.offset(offset).limit(limit)
-        return list(self._session.scalars(statement).all())
-
-    def count_clients_looking_for_trainer(self) -> int:
-        statement = select(func.count(DiscoveryProfileModel.user_id)).where(
-            DiscoveryProfileModel.role == "client",
-            DiscoveryProfileModel.looking_for_trainer.is_(True),
-        )
-        count = self._session.scalar(statement)
-        return int(count or 0)
-
-
 class TrainerClientRelationRepository:
     def __init__(self, session: Session) -> None:
         self._session = session

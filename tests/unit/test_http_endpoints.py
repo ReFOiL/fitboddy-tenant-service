@@ -62,17 +62,6 @@ def test_list_trainers_returns_only_published_profiles() -> None:
     assert hidden_trainer_id not in trainer_ids
 
 
-def test_list_clients_looking_for_trainer() -> None:
-    client.put(
-        "/api/v1/marketplace/users/client_1/profile",
-        json={"role": "client", "is_visible": True, "looking_for_trainer": True},
-    )
-    response = client.get("/api/v1/marketplace/clients/looking")
-    assert response.status_code == 200
-    clients = response.json()
-    assert any(item["user_id"] == "client_1" for item in clients)
-
-
 def test_list_trainers_supports_pagination_and_search() -> None:
     token = f"trainer_page_{uuid4().hex}"
     trainer_a = f"{token}_a"

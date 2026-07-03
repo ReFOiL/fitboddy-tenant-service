@@ -75,26 +75,6 @@ class TenantService:
             for item in paged_profiles
         ], len(filtered)
 
-    def list_clients_looking_for_trainer(
-        self,
-        command: ListDiscoveryProfilesCommand,
-    ) -> tuple[list[DiscoveryProfile], int]:
-        search = self._normalize_search(command.search)
-        profiles = self._profiles.list_clients_looking_for_trainer()
-        profile_user_ids = [profile.user_id for profile in profiles]
-        names_map = self._resolve_names(profile_user_ids)
-        logins_map = self._resolve_logins(profile_user_ids)
-        filtered = self._filter_profiles_by_name(profiles, names_map, search)
-        paged_profiles = self._paginate_collection(filtered, command.page, command.page_size)
-        return [
-            self._to_domain_profile(
-                item,
-                display_name=names_map.get(item.user_id),
-                login=logins_map.get(item.user_id),
-            )
-            for item in paged_profiles
-        ], len(filtered)
-
     def create_relation(self, command: CreateRelationCommand) -> TrainerClientRelation:
         self._ensure_relation_mode_supported(command.mode)
         trainer_profile = self._profiles.find_by_id(command.trainer_user_id)

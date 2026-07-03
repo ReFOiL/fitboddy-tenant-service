@@ -69,27 +69,6 @@ class TenantHttpHandler:
             self._error_translator.raise_http_error(exc)
         raise AssertionError("unreachable")
 
-    def list_clients_looking_for_trainer(
-        self,
-        *,
-        page: int | None = None,
-        page_size: int | None = None,
-        search: str | None = None,
-    ) -> tuple[list[DiscoveryProfileResponse], int]:
-        try:
-            with self._runtime.tenant_service_scope() as tenant_service:
-                profiles, total = tenant_service.list_clients_looking_for_trainer(
-                    self._request_factory.to_list_discovery_profiles_command(
-                        page=page,
-                        page_size=page_size,
-                        search=search,
-                    )
-                )
-                return [self._response_factory.from_domain_profile(profile) for profile in profiles], total
-        except TenantError as exc:
-            self._error_translator.raise_http_error(exc)
-        raise AssertionError("unreachable")
-
     def create_relation(self, payload: CreateRelationRequest) -> TrainerClientRelationResponse:
         try:
             with self._runtime.tenant_service_scope() as tenant_service:

@@ -31,12 +31,6 @@ class TenantRoutes:
             "/marketplace/trainers", self.list_trainers, methods=["GET"], response_model=list[DiscoveryProfileResponse]
         )
         self.router.add_api_route(
-            "/marketplace/clients/looking",
-            self.list_clients_looking_for_trainer,
-            methods=["GET"],
-            response_model=list[DiscoveryProfileResponse],
-        )
-        self.router.add_api_route(
             "/marketplace/relations",
             self.create_relation,
             methods=["POST"],
@@ -112,22 +106,6 @@ class TenantRoutes:
         search: str | None = Query(default=None, min_length=1, max_length=64),
     ) -> list[DiscoveryProfileResponse]:
         profiles, total = request.app.state.tenant_handler.list_trainers(
-            page=page,
-            page_size=page_size,
-            search=search,
-        )
-        TenantRoutes._set_pagination_headers(response, page, page_size, total)
-        return profiles
-
-    @staticmethod
-    def list_clients_looking_for_trainer(
-        request: Request,
-        response: Response,
-        page: int | None = Query(default=None, ge=1),
-        page_size: int | None = Query(default=None, ge=1, le=_MAX_PAGE_SIZE),
-        search: str | None = Query(default=None, min_length=1, max_length=64),
-    ) -> list[DiscoveryProfileResponse]:
-        profiles, total = request.app.state.tenant_handler.list_clients_looking_for_trainer(
             page=page,
             page_size=page_size,
             search=search,
