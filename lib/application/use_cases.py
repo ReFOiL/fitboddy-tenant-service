@@ -77,15 +77,29 @@ class TenantService:
 
     def create_relation(self, command: CreateRelationCommand) -> TrainerClientRelation:
         self._ensure_relation_mode_supported(command.mode)
+        now = datetime.now(UTC).replace(tzinfo=None)
         trainer_profile = self._profiles.find_by_id(command.trainer_user_id)
         client_profile = self._profiles.find_by_id(command.client_user_id)
         if trainer_profile is None or trainer_profile.role != "trainer":
             raise ProfileNotFoundError("trainer profile not found")
-        if client_profile is None or client_profile.role != "client":
+        if client_profile is None:
+            can_autocreate_client_profile = command.mode == "direct" and command.acting_user_id == command.client_user_id
+            if can_autocreate_client_profile:
+                client_profile = self._profiles.upsert(
+                    DiscoveryProfileModel(
+                        user_id=command.client_user_id,
+                        role="client",
+                        is_visible=False,
+                        looking_for_trainer=False,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+            else:
+                raise ProfileNotFoundError("client profile not found")
+        elif client_profile.role != "client":
             raise ProfileNotFoundError("client profile not found")
         self._ensure_relation_actor_permissions(command)
-
-        now = datetime.now(UTC).replace(tzinfo=None)
         relation_status = "invited" if command.mode == "invite" else "active"
         if relation_status == "active":
             existing_active = self._relations.find_active_by_client(command.client_user_id)
@@ -114,7 +128,6 @@ class TenantService:
             self._session.flush()
 
         if relation.status == "active":
-            client_profile.looking_for_trainer = False
             client_profile.updated_at = now
             self._session.flush()
 
@@ -208,7 +221,6 @@ class TenantService:
         relation.updated_at = now
         client_profile = self._profiles.find_by_id(relation.client_user_id)
         if client_profile is not None and client_profile.role == "client":
-            client_profile.looking_for_trainer = False
             client_profile.updated_at = now
             self._session.flush()
         self._session.commit()

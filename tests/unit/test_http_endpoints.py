@@ -328,6 +328,36 @@ def test_direct_relation_rejected_when_client_already_connected_to_same_trainer(
     assert second.json()["detail"] == "client already connected to this trainer"
 
 
+def test_direct_relation_autocreates_client_discovery_profile() -> None:
+    trainer_id = f"trainer_auto_client_{uuid4().hex}"
+    client_id = f"client_auto_profile_{uuid4().hex}"
+
+    trainer_upsert = client.put(
+        f"/api/v1/marketplace/users/{trainer_id}/profile",
+        json={"role": "trainer", "is_visible": True, "looking_for_trainer": False},
+    )
+    assert trainer_upsert.status_code == 200
+
+    relation_response = client.post(
+        "/api/v1/marketplace/relations",
+        json={
+            "acting_user_id": client_id,
+            "trainer_user_id": trainer_id,
+            "client_user_id": client_id,
+            "mode": "direct",
+        },
+    )
+    assert relation_response.status_code == 201
+    assert relation_response.json()["status"] == "active"
+
+    profile_check = client.post(
+        "/api/v1/marketplace/profiles/check",
+        json={"user_id": client_id, "allowed_roles": ["client"]},
+    )
+    assert profile_check.status_code == 200
+    assert profile_check.json() == {"exists": True, "role": "client"}
+
+
 def test_trainer_closed_statuses_are_separated() -> None:
     client.put(
         "/api/v1/marketplace/users/trainer_7/profile",
