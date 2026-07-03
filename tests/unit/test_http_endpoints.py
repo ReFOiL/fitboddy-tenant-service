@@ -256,6 +256,78 @@ def test_recreate_relation_after_leave() -> None:
     assert second.json()["status"] == "active"
 
 
+def test_direct_relation_rejected_when_client_has_active_relation_with_other_trainer() -> None:
+    client.put(
+        "/api/v1/marketplace/users/trainer_10a/profile",
+        json={"role": "trainer", "is_visible": True, "looking_for_trainer": False},
+    )
+    client.put(
+        "/api/v1/marketplace/users/trainer_10b/profile",
+        json={"role": "trainer", "is_visible": True, "looking_for_trainer": False},
+    )
+    client.put(
+        "/api/v1/marketplace/users/client_10/profile",
+        json={"role": "client", "is_visible": True, "looking_for_trainer": True},
+    )
+
+    first = client.post(
+        "/api/v1/marketplace/relations",
+        json={
+            "acting_user_id": "client_10",
+            "trainer_user_id": "trainer_10a",
+            "client_user_id": "client_10",
+            "mode": "direct",
+        },
+    )
+    assert first.status_code == 201
+
+    second = client.post(
+        "/api/v1/marketplace/relations",
+        json={
+            "acting_user_id": "client_10",
+            "trainer_user_id": "trainer_10b",
+            "client_user_id": "client_10",
+            "mode": "direct",
+        },
+    )
+    assert second.status_code == 422
+    assert second.json()["detail"] == "client already has active relation"
+
+
+def test_direct_relation_rejected_when_client_already_connected_to_same_trainer() -> None:
+    client.put(
+        "/api/v1/marketplace/users/trainer_11/profile",
+        json={"role": "trainer", "is_visible": True, "looking_for_trainer": False},
+    )
+    client.put(
+        "/api/v1/marketplace/users/client_11/profile",
+        json={"role": "client", "is_visible": True, "looking_for_trainer": True},
+    )
+
+    first = client.post(
+        "/api/v1/marketplace/relations",
+        json={
+            "acting_user_id": "client_11",
+            "trainer_user_id": "trainer_11",
+            "client_user_id": "client_11",
+            "mode": "direct",
+        },
+    )
+    assert first.status_code == 201
+
+    second = client.post(
+        "/api/v1/marketplace/relations",
+        json={
+            "acting_user_id": "client_11",
+            "trainer_user_id": "trainer_11",
+            "client_user_id": "client_11",
+            "mode": "direct",
+        },
+    )
+    assert second.status_code == 422
+    assert second.json()["detail"] == "client already connected to this trainer"
+
+
 def test_trainer_closed_statuses_are_separated() -> None:
     client.put(
         "/api/v1/marketplace/users/trainer_7/profile",

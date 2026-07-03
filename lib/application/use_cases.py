@@ -88,7 +88,11 @@ class TenantService:
         now = datetime.now(UTC).replace(tzinfo=None)
         relation_status = "invited" if command.mode == "invite" else "active"
         if relation_status == "active":
-            self._close_existing_active_client_relation(command.client_user_id, now)
+            existing_active = self._relations.find_active_by_client(command.client_user_id)
+            if existing_active is not None:
+                if existing_active.trainer_user_id == command.trainer_user_id:
+                    raise ValidationError("client already connected to this trainer")
+                raise ValidationError("client already has active relation")
 
         relation = self._relations.find_by_pair(command.trainer_user_id, command.client_user_id)
         if relation is None:
