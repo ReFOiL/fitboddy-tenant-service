@@ -1,10 +1,19 @@
 from fastapi.testclient import TestClient
+import pytest
 from uuid import uuid4
 
 from presentation.http.main import app
 
 
-client = TestClient(app)
+client: TestClient
+
+
+@pytest.fixture(autouse=True)
+def setup_client() -> TestClient:
+    with TestClient(app) as test_client:
+        global client
+        client = test_client
+        yield test_client
 
 
 def test_health() -> None:
