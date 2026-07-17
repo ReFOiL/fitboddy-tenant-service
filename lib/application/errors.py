@@ -6,6 +6,14 @@ class ValidationError(TenantError):
     pass
 
 
+class UnauthorizedError(TenantError):
+    pass
+
+
+class ForbiddenError(TenantError):
+    pass
+
+
 class ProfileNotFoundError(TenantError):
     pass
 

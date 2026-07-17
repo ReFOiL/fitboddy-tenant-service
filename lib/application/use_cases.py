@@ -281,6 +281,98 @@ class TenantService:
             for item in paged_relations
         ], len(filtered_relations)
 
+    def admin_list_profiles(
+        self,
+        *,
+        role: str | None,
+        page: int,
+        page_size: int,
+    ) -> tuple[list[DiscoveryProfile], int]:
+        page = max(page, 1)
+        page_size = min(max(page_size, 1), 100)
+        offset = (page - 1) * page_size
+        if role:
+            self._ensure_role_supported(role)
+        rows, total = self._profiles.list_all(role=role, offset=offset, limit=page_size)
+        names_map = self._resolve_names([row.user_id for row in rows])
+        logins_map = self._resolve_logins([row.user_id for row in rows])
+        return [
+            self._to_domain_profile(
+                row,
+                display_name=names_map.get(row.user_id),
+                login=logins_map.get(row.user_id),
+            )
+            for row in rows
+        ], total
+
+    def admin_set_publication(self, user_id: str, is_visible: bool) -> DiscoveryProfile:
+        profile = self._profiles.find_by_id(user_id)
+        if profile is None:
+            raise ProfileNotFoundError("profile not found")
+        profile.is_visible = is_visible
+        profile.updated_at = datetime.now(UTC).replace(tzinfo=None)
+        self._session.commit()
+        names_map = self._resolve_names([user_id])
+        logins_map = self._resolve_logins([user_id])
+        return self._to_domain_profile(
+            profile,
+            display_name=names_map.get(user_id),
+            login=logins_map.get(user_id),
+        )
+
+    def admin_list_relations(
+        self,
+        *,
+        status: str | None,
+        page: int,
+        page_size: int,
+    ) -> tuple[list[TrainerClientRelation], int]:
+        page = max(page, 1)
+        page_size = min(max(page_size, 1), 100)
+        offset = (page - 1) * page_size
+        if status and status not in self._ALLOWED_RELATION_STATUSES:
+            raise ValidationError("unsupported relation status")
+        rows, total = self._relations.list_all(status=status, offset=offset, limit=page_size)
+        user_ids = list(
+            {user_id for row in rows for user_id in (row.trainer_user_id, row.client_user_id)}
+        )
+        names_map = self._resolve_names([row.client_user_id for row in rows])
+        logins_map = self._resolve_logins(user_ids)
+        return [
+            self._to_domain_relation(
+                row,
+                client_display_name=names_map.get(row.client_user_id),
+                trainer_login=logins_map.get(row.trainer_user_id),
+                client_login=logins_map.get(row.client_user_id),
+            )
+            for row in rows
+        ], total
+
+    def admin_force_leave_relation(self, relation_id: str) -> TrainerClientRelation:
+        relation = self._relations.find_by_id(relation_id)
+        if relation is None:
+            raise RelationNotFoundError("relation not found")
+        if relation.status in {"declined", "ended", "left"}:
+            raise ValidationError("relation already closed")
+        relation.status = "declined" if relation.status == "invited" else "ended"
+        relation.updated_at = datetime.now(UTC).replace(tzinfo=None)
+        self._session.commit()
+        relation_logins = self._resolve_logins([relation.trainer_user_id, relation.client_user_id])
+        return self._to_domain_relation(
+            relation,
+            trainer_login=relation_logins.get(relation.trainer_user_id),
+            client_login=relation_logins.get(relation.client_user_id),
+        )
+
+    def admin_stats(self) -> dict[str, int]:
+        return {
+            "trainers": self._profiles.count_by_role("trainer"),
+            "clients": self._profiles.count_by_role("client"),
+            "relations_total": self._relations.count_all(),
+            "relations_active": self._relations.count_by_status("active"),
+            "relations_invited": self._relations.count_by_status("invited"),
+        }
+
     def check_profile_access(self, command: CheckProfileAccessCommand) -> DiscoveryProfile | None:
         profile = self._profiles.find_by_id(command.user_id)
         if profile is None:

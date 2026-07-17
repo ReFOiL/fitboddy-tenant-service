@@ -1,7 +1,17 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 from urllib import error, request
+
+from application.errors import ForbiddenError, UnauthorizedError
+
+
+@dataclass(frozen=True)
+class AuthUser:
+    user_id: str
+    tenant_id: str
+    role: str
 
 
 class ProfileGateway:
@@ -40,6 +50,29 @@ class ProfileGateway:
 class AuthGateway:
     def __init__(self, auth_service_url: str) -> None:
         self._auth_service_url = auth_service_url.rstrip("/")
+
+    def get_current_user(self, access_token: str) -> AuthUser:
+        req = request.Request(
+            f"{self._auth_service_url}/api/v1/auth/me",
+            headers={"Authorization": f"Bearer {access_token}"},
+            method="GET",
+        )
+        try:
+            with request.urlopen(req, timeout=5) as response:
+                body = json.loads(response.read().decode("utf-8"))
+        except error.HTTPError as exc:
+            if exc.code == 401:
+                raise UnauthorizedError("invalid access token") from exc
+            raise UnauthorizedError("auth-service unavailable") from exc
+        except (error.URLError, json.JSONDecodeError) as exc:
+            raise UnauthorizedError("auth-service unavailable") from exc
+        return AuthUser(user_id=body["user_id"], tenant_id=body["tenant_id"], role=body["role"])
+
+    def require_platform_admin(self, access_token: str) -> AuthUser:
+        user = self.get_current_user(access_token)
+        if user.role != "platform_admin":
+            raise ForbiddenError("platform_admin role required")
+        return user
 
     def get_logins_by_user_ids(self, user_ids: list[str]) -> dict[str, str]:
         if not user_ids:

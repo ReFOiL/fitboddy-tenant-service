@@ -52,6 +52,32 @@ class DiscoveryProfileRepository:
         count = self._session.scalar(statement)
         return int(count or 0)
 
+    def list_all(
+        self,
+        *,
+        role: str | None = None,
+        offset: int = 0,
+        limit: int = 20,
+    ) -> tuple[list[DiscoveryProfileModel], int]:
+        statement = select(DiscoveryProfileModel)
+        count_statement = select(func.count(DiscoveryProfileModel.user_id))
+        if role:
+            statement = statement.where(DiscoveryProfileModel.role == role)
+            count_statement = count_statement.where(DiscoveryProfileModel.role == role)
+        total = int(self._session.scalar(count_statement) or 0)
+        rows = list(
+            self._session.scalars(
+                statement.order_by(DiscoveryProfileModel.updated_at.desc()).offset(offset).limit(limit)
+            ).all()
+        )
+        return rows, total
+
+    def count_by_role(self, role: str) -> int:
+        count = self._session.scalar(
+            select(func.count(DiscoveryProfileModel.user_id)).where(DiscoveryProfileModel.role == role)
+        )
+        return int(count or 0)
+
 class TrainerClientRelationRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
@@ -136,5 +162,37 @@ class TrainerClientRelationRepository:
         if source is not None:
             statement = statement.where(TrainerClientRelationModel.source == source)
         count = self._session.scalar(statement)
+        return int(count or 0)
+
+    def list_all(
+        self,
+        *,
+        status: str | None = None,
+        offset: int = 0,
+        limit: int = 20,
+    ) -> tuple[list[TrainerClientRelationModel], int]:
+        statement = select(TrainerClientRelationModel)
+        count_statement = select(func.count(TrainerClientRelationModel.relation_id))
+        if status:
+            statement = statement.where(TrainerClientRelationModel.status == status)
+            count_statement = count_statement.where(TrainerClientRelationModel.status == status)
+        total = int(self._session.scalar(count_statement) or 0)
+        rows = list(
+            self._session.scalars(
+                statement.order_by(TrainerClientRelationModel.updated_at.desc()).offset(offset).limit(limit)
+            ).all()
+        )
+        return rows, total
+
+    def count_all(self) -> int:
+        count = self._session.scalar(select(func.count(TrainerClientRelationModel.relation_id)))
+        return int(count or 0)
+
+    def count_by_status(self, status: str) -> int:
+        count = self._session.scalar(
+            select(func.count(TrainerClientRelationModel.relation_id)).where(
+                TrainerClientRelationModel.status == status
+            )
+        )
         return int(count or 0)
 

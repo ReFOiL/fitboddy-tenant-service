@@ -8,6 +8,7 @@ from presentation.http.error_translator import ErrorTranslator
 from presentation.http.handlers.tenant_handler import TenantHttpHandler
 from presentation.http.request_factory import TenantRequestFactory
 from presentation.http.response_factory import TenantResponseFactory
+from presentation.http.routes.admin_routes import AdminRoutes
 from presentation.http.routes.system_routes import SystemRoutes
 from presentation.http.routes.tenant_routes import TenantRoutes
 
@@ -31,3 +32,4 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="tenant-service", version="0.1.0", lifespan=lifespan)
 app.include_router(SystemRoutes().router)
 app.include_router(TenantRoutes().router)
+app.include_router(AdminRoutes().router)

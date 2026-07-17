@@ -17,6 +17,10 @@ class TenantApplicationRuntime:
         self._profile_gateway = ProfileGateway(settings.profile_service_url)
         self._auth_gateway = AuthGateway(settings.auth_service_url)
 
+    @property
+    def auth_gateway(self) -> AuthGateway:
+        return self._auth_gateway
+
     @contextmanager
     def tenant_service_scope(self):
         session = self._db_manager.create_session()

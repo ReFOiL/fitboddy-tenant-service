@@ -1,3 +1,5 @@
+from fastapi import HTTPException, status
+
 from application.errors import TenantError
 from application.runtime import TenantApplicationRuntime
 from presentation.http.error_translator import ErrorTranslator
@@ -5,6 +7,10 @@ from presentation.http.request_factory import TenantRequestFactory
 from presentation.http.response_factory import TenantResponseFactory
 from presentation.http.schemas import (
     AcceptRelationRequest,
+    AdminProfileListResponse,
+    AdminRelationListResponse,
+    AdminSetPublicationRequest,
+    AdminStatsResponse,
     CompatMembershipCheckRequest,
     CompatMembershipCheckResponse,
     CreateRelationRequest,
@@ -195,3 +201,96 @@ class TenantHttpHandler:
         except TenantError as exc:
             self._error_translator.raise_http_error(exc)
         raise AssertionError("unreachable")
+
+    def admin_list_profiles(
+        self,
+        *,
+        authorization: str,
+        role: str | None,
+        page: int,
+        page_size: int,
+    ) -> AdminProfileListResponse:
+        self._require_platform_admin(authorization)
+        try:
+            with self._runtime.tenant_service_scope() as tenant_service:
+                items, total = tenant_service.admin_list_profiles(role=role, page=page, page_size=page_size)
+                return AdminProfileListResponse(
+                    items=[self._response_factory.from_domain_profile(item) for item in items],
+                    total=total,
+                    page=page,
+                    page_size=page_size,
+                )
+        except TenantError as exc:
+            self._error_translator.raise_http_error(exc)
+        raise AssertionError("unreachable")
+
+    def admin_set_publication(
+        self,
+        *,
+        authorization: str,
+        user_id: str,
+        payload: AdminSetPublicationRequest,
+    ) -> DiscoveryProfileResponse:
+        self._require_platform_admin(authorization)
+        try:
+            with self._runtime.tenant_service_scope() as tenant_service:
+                profile = tenant_service.admin_set_publication(user_id, payload.is_visible)
+                return self._response_factory.from_domain_profile(profile)
+        except TenantError as exc:
+            self._error_translator.raise_http_error(exc)
+        raise AssertionError("unreachable")
+
+    def admin_list_relations(
+        self,
+        *,
+        authorization: str,
+        status_filter: str | None,
+        page: int,
+        page_size: int,
+    ) -> AdminRelationListResponse:
+        self._require_platform_admin(authorization)
+        try:
+            with self._runtime.tenant_service_scope() as tenant_service:
+                items, total = tenant_service.admin_list_relations(
+                    status=status_filter,
+                    page=page,
+                    page_size=page_size,
+                )
+                return AdminRelationListResponse(
+                    items=[self._response_factory.from_domain_relation(item) for item in items],
+                    total=total,
+                    page=page,
+                    page_size=page_size,
+                )
+        except TenantError as exc:
+            self._error_translator.raise_http_error(exc)
+        raise AssertionError("unreachable")
+
+    def admin_force_leave_relation(self, *, authorization: str, relation_id: str) -> TrainerClientRelationResponse:
+        self._require_platform_admin(authorization)
+        try:
+            with self._runtime.tenant_service_scope() as tenant_service:
+                relation = tenant_service.admin_force_leave_relation(relation_id)
+                return self._response_factory.from_domain_relation(relation)
+        except TenantError as exc:
+            self._error_translator.raise_http_error(exc)
+        raise AssertionError("unreachable")
+
+    def admin_stats(self, *, authorization: str) -> AdminStatsResponse:
+        self._require_platform_admin(authorization)
+        try:
+            with self._runtime.tenant_service_scope() as tenant_service:
+                stats = tenant_service.admin_stats()
+                return AdminStatsResponse(**stats)
+        except TenantError as exc:
+            self._error_translator.raise_http_error(exc)
+        raise AssertionError("unreachable")
+
+    def _require_platform_admin(self, authorization: str) -> None:
+        access_token = authorization.removeprefix("Bearer ").strip()
+        if not access_token:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing Bearer token.")
+        try:
+            self._runtime.auth_gateway.require_platform_admin(access_token)
+        except TenantError as exc:
+            self._error_translator.raise_http_error(exc)

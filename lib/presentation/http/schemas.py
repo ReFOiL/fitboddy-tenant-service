@@ -85,3 +85,29 @@ class CompatMembershipCheckResponse(BaseModel):
 class ProfileAccessCheckResponse(BaseModel):
     exists: bool
     role: str | None = None
+
+
+class AdminSetPublicationRequest(BaseModel):
+    is_visible: bool
+
+
+class AdminProfileListResponse(BaseModel):
+    items: list[DiscoveryProfileResponse] = Field(default_factory=list)
+    total: int
+    page: int
+    page_size: int
+
+
+class AdminRelationListResponse(BaseModel):
+    items: list[TrainerClientRelationResponse] = Field(default_factory=list)
+    total: int
+    page: int
+    page_size: int
+
+
+class AdminStatsResponse(BaseModel):
+    trainers: int
+    clients: int
+    relations_total: int
+    relations_active: int
+    relations_invited: int
