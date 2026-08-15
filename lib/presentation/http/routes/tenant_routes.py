@@ -1,12 +1,10 @@
-from fastapi import APIRouter, Query, Request, Response, status
+from fastapi import APIRouter, Header, Query, Request, Response, status
 
 from presentation.http.schemas import (
-    AcceptRelationRequest,
     CompatMembershipCheckRequest,
     CompatMembershipCheckResponse,
     CreateRelationRequest,
     DiscoveryProfileResponse,
-    LeaveRelationRequest,
     ProfileAccessCheckRequest,
     ProfileAccessCheckResponse,
     TrainerClientRelationResponse,
@@ -114,18 +112,28 @@ class TenantRoutes:
         return profiles
 
     @staticmethod
-    def create_relation(request: Request, payload: CreateRelationRequest) -> TrainerClientRelationResponse:
-        return request.app.state.tenant_handler.create_relation(payload)
+    def create_relation(
+        request: Request,
+        payload: CreateRelationRequest,
+        authorization: str = Header(default="", alias="Authorization"),
+    ) -> TrainerClientRelationResponse:
+        return request.app.state.tenant_handler.create_relation(authorization, payload)
 
     @staticmethod
     def accept_relation(
-        request: Request, relation_id: str, payload: AcceptRelationRequest
+        request: Request,
+        relation_id: str,
+        authorization: str = Header(default="", alias="Authorization"),
     ) -> TrainerClientRelationResponse:
-        return request.app.state.tenant_handler.accept_relation(relation_id, payload)
+        return request.app.state.tenant_handler.accept_relation(authorization, relation_id)
 
     @staticmethod
-    def leave_relation(request: Request, relation_id: str, payload: LeaveRelationRequest) -> TrainerClientRelationResponse:
-        return request.app.state.tenant_handler.leave_relation(relation_id, payload)
+    def leave_relation(
+        request: Request,
+        relation_id: str,
+        authorization: str = Header(default="", alias="Authorization"),
+    ) -> TrainerClientRelationResponse:
+        return request.app.state.tenant_handler.leave_relation(authorization, relation_id)
 
     @staticmethod
     def list_trainer_clients(

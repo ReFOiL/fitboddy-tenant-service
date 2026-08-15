@@ -14,18 +14,9 @@ class UpsertDiscoveryProfileRequest(BaseModel):
 
 
 class CreateRelationRequest(BaseModel):
-    acting_user_id: str = Field(min_length=1, max_length=64)
     trainer_user_id: str = Field(min_length=1, max_length=64)
     client_user_id: str = Field(min_length=1, max_length=64)
     mode: str = Field(default="invite", min_length=6, max_length=16)
-
-
-class AcceptRelationRequest(BaseModel):
-    acting_user_id: str = Field(min_length=1, max_length=64)
-
-
-class LeaveRelationRequest(BaseModel):
-    acting_user_id: str = Field(min_length=1, max_length=64)
 
 
 class CompatMembershipCheckRequest(BaseModel):

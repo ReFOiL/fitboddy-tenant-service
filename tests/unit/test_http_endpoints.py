@@ -2,14 +2,23 @@ from fastapi.testclient import TestClient
 import pytest
 from uuid import uuid4
 
+from application.gateways import AuthUser
 from presentation.http.main import app
 
 
 client: TestClient
 
 
+def auth_as(user_id: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {user_id}"}
+
+
 @pytest.fixture(autouse=True)
-def setup_client() -> TestClient:
+def setup_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    def fake_get_current_user(_self: object, access_token: str) -> AuthUser:
+        return AuthUser(user_id=access_token, tenant_id="marketplace", role="client")
+
+    monkeypatch.setattr("application.gateways.AuthGateway.get_current_user", fake_get_current_user)
     with TestClient(app) as test_client:
         global client
         client = test_client
@@ -122,8 +131,8 @@ def test_create_accept_leave_relation_flow() -> None:
 
     create_response = client.post(
         "/api/v1/marketplace/relations",
+        headers=auth_as("trainer_2"),
         json={
-            "acting_user_id": "trainer_2",
             "trainer_user_id": "trainer_2",
             "client_user_id": "client_2",
             "mode": "invite",
@@ -136,7 +145,7 @@ def test_create_accept_leave_relation_flow() -> None:
 
     accept_response = client.post(
         f"/api/v1/marketplace/relations/{relation_id}/accept",
-        json={"acting_user_id": "client_2"},
+        headers=auth_as("client_2"),
     )
     assert accept_response.status_code == 200
     assert accept_response.json()["status"] == "active"
@@ -147,7 +156,7 @@ def test_create_accept_leave_relation_flow() -> None:
 
     leave_response = client.post(
         f"/api/v1/marketplace/relations/{relation_id}/leave",
-        json={"acting_user_id": "trainer_2"},
+        headers=auth_as("trainer_2"),
     )
     assert leave_response.status_code == 200
     assert leave_response.json()["status"] == "ended"
@@ -164,14 +173,14 @@ def test_invite_requires_trainer_actor() -> None:
     )
     response = client.post(
         "/api/v1/marketplace/relations",
+        headers=auth_as("client_4"),
         json={
-            "acting_user_id": "client_4",
             "trainer_user_id": "trainer_4",
             "client_user_id": "client_4",
             "mode": "invite",
         },
     )
-    assert response.status_code == 422
+    assert response.status_code == 403
 
 
 def test_invite_flow_with_incoming_list_and_decline() -> None:
@@ -185,8 +194,8 @@ def test_invite_flow_with_incoming_list_and_decline() -> None:
     )
     create_response = client.post(
         "/api/v1/marketplace/relations",
+        headers=auth_as("trainer_5"),
         json={
-            "acting_user_id": "trainer_5",
             "trainer_user_id": "trainer_5",
             "client_user_id": "client_5",
             "mode": "invite",
@@ -204,7 +213,7 @@ def test_invite_flow_with_incoming_list_and_decline() -> None:
 
     decline_response = client.post(
         f"/api/v1/marketplace/relations/{relation_id}/leave",
-        json={"acting_user_id": "client_5"},
+        headers=auth_as("client_5"),
     )
     assert decline_response.status_code == 200
     assert decline_response.json()["status"] == "declined"
@@ -225,8 +234,8 @@ def test_recreate_relation_after_leave() -> None:
     )
     first = client.post(
         "/api/v1/marketplace/relations",
+        headers=auth_as("trainer_6"),
         json={
-            "acting_user_id": "trainer_6",
             "trainer_user_id": "trainer_6",
             "client_user_id": "client_6",
             "mode": "direct",
@@ -237,15 +246,15 @@ def test_recreate_relation_after_leave() -> None:
 
     leave_response = client.post(
         f"/api/v1/marketplace/relations/{relation_id}/leave",
-        json={"acting_user_id": "trainer_6"},
+        headers=auth_as("trainer_6"),
     )
     assert leave_response.status_code == 200
     assert leave_response.json()["status"] == "ended"
 
     second = client.post(
         "/api/v1/marketplace/relations",
+        headers=auth_as("trainer_6"),
         json={
-            "acting_user_id": "trainer_6",
             "trainer_user_id": "trainer_6",
             "client_user_id": "client_6",
             "mode": "direct",
@@ -272,8 +281,8 @@ def test_direct_relation_rejected_when_client_has_active_relation_with_other_tra
 
     first = client.post(
         "/api/v1/marketplace/relations",
+        headers=auth_as("client_10"),
         json={
-            "acting_user_id": "client_10",
             "trainer_user_id": "trainer_10a",
             "client_user_id": "client_10",
             "mode": "direct",
@@ -283,8 +292,8 @@ def test_direct_relation_rejected_when_client_has_active_relation_with_other_tra
 
     second = client.post(
         "/api/v1/marketplace/relations",
+        headers=auth_as("client_10"),
         json={
-            "acting_user_id": "client_10",
             "trainer_user_id": "trainer_10b",
             "client_user_id": "client_10",
             "mode": "direct",
@@ -306,8 +315,8 @@ def test_direct_relation_rejected_when_client_already_connected_to_same_trainer(
 
     first = client.post(
         "/api/v1/marketplace/relations",
+        headers=auth_as("client_11"),
         json={
-            "acting_user_id": "client_11",
             "trainer_user_id": "trainer_11",
             "client_user_id": "client_11",
             "mode": "direct",
@@ -317,8 +326,8 @@ def test_direct_relation_rejected_when_client_already_connected_to_same_trainer(
 
     second = client.post(
         "/api/v1/marketplace/relations",
+        headers=auth_as("client_11"),
         json={
-            "acting_user_id": "client_11",
             "trainer_user_id": "trainer_11",
             "client_user_id": "client_11",
             "mode": "direct",
@@ -340,8 +349,8 @@ def test_direct_relation_autocreates_client_discovery_profile() -> None:
 
     relation_response = client.post(
         "/api/v1/marketplace/relations",
+        headers=auth_as(client_id),
         json={
-            "acting_user_id": client_id,
             "trainer_user_id": trainer_id,
             "client_user_id": client_id,
             "mode": "direct",
@@ -374,8 +383,8 @@ def test_trainer_closed_statuses_are_separated() -> None:
 
     invited = client.post(
         "/api/v1/marketplace/relations",
+        headers=auth_as("trainer_7"),
         json={
-            "acting_user_id": "trainer_7",
             "trainer_user_id": "trainer_7",
             "client_user_id": "client_7a",
             "mode": "invite",
@@ -386,15 +395,15 @@ def test_trainer_closed_statuses_are_separated() -> None:
 
     declined = client.post(
         f"/api/v1/marketplace/relations/{invited_relation_id}/leave",
-        json={"acting_user_id": "client_7a"},
+        headers=auth_as("client_7a"),
     )
     assert declined.status_code == 200
     assert declined.json()["status"] == "declined"
 
     direct = client.post(
         "/api/v1/marketplace/relations",
+        headers=auth_as("trainer_7"),
         json={
-            "acting_user_id": "trainer_7",
             "trainer_user_id": "trainer_7",
             "client_user_id": "client_7b",
             "mode": "direct",
@@ -405,7 +414,7 @@ def test_trainer_closed_statuses_are_separated() -> None:
 
     ended = client.post(
         f"/api/v1/marketplace/relations/{direct_relation_id}/leave",
-        json={"acting_user_id": "trainer_7"},
+        headers=auth_as("trainer_7"),
     )
     assert ended.status_code == 200
     assert ended.json()["status"] == "ended"
@@ -441,8 +450,8 @@ def test_trainer_clients_support_pagination_search_and_source_filter() -> None:
 
     direct_relation = client.post(
         "/api/v1/marketplace/relations",
+        headers=auth_as(trainer_id),
         json={
-            "acting_user_id": trainer_id,
             "trainer_user_id": trainer_id,
             "client_user_id": direct_client_id,
             "mode": "direct",
@@ -452,8 +461,8 @@ def test_trainer_clients_support_pagination_search_and_source_filter() -> None:
 
     invite_relation = client.post(
         "/api/v1/marketplace/relations",
+        headers=auth_as(trainer_id),
         json={
-            "acting_user_id": trainer_id,
             "trainer_user_id": trainer_id,
             "client_user_id": invite_client_id,
             "mode": "invite",
@@ -464,7 +473,7 @@ def test_trainer_clients_support_pagination_search_and_source_filter() -> None:
 
     accept_invite = client.post(
         f"/api/v1/marketplace/relations/{invite_relation_id}/accept",
-        json={"acting_user_id": invite_client_id},
+        headers=auth_as(invite_client_id),
     )
     assert accept_invite.status_code == 200
 
@@ -495,8 +504,8 @@ def test_trainer_funnel_metrics() -> None:
 
     invited_pending = client.post(
         "/api/v1/marketplace/relations",
+        headers=auth_as("trainer_8"),
         json={
-            "acting_user_id": "trainer_8",
             "trainer_user_id": "trainer_8",
             "client_user_id": "client_8a",
             "mode": "invite",
@@ -506,8 +515,8 @@ def test_trainer_funnel_metrics() -> None:
 
     invited_declined = client.post(
         "/api/v1/marketplace/relations",
+        headers=auth_as("trainer_8"),
         json={
-            "acting_user_id": "trainer_8",
             "trainer_user_id": "trainer_8",
             "client_user_id": "client_8b",
             "mode": "invite",
@@ -517,15 +526,15 @@ def test_trainer_funnel_metrics() -> None:
     decline_relation_id = invited_declined.json()["relation_id"]
     decline = client.post(
         f"/api/v1/marketplace/relations/{decline_relation_id}/leave",
-        json={"acting_user_id": "client_8b"},
+        headers=auth_as("client_8b"),
     )
     assert decline.status_code == 200
     assert decline.json()["status"] == "declined"
 
     invited_accepted = client.post(
         "/api/v1/marketplace/relations",
+        headers=auth_as("trainer_8"),
         json={
-            "acting_user_id": "trainer_8",
             "trainer_user_id": "trainer_8",
             "client_user_id": "client_8c",
             "mode": "invite",
@@ -535,7 +544,7 @@ def test_trainer_funnel_metrics() -> None:
     accept_relation_id = invited_accepted.json()["relation_id"]
     accept = client.post(
         f"/api/v1/marketplace/relations/{accept_relation_id}/accept",
-        json={"acting_user_id": "client_8c"},
+        headers=auth_as("client_8c"),
     )
     assert accept.status_code == 200
     assert accept.json()["status"] == "active"
@@ -578,8 +587,8 @@ def test_get_client_active_relation() -> None:
     )
     create_response = client.post(
         "/api/v1/marketplace/relations",
+        headers=auth_as("trainer_9"),
         json={
-            "acting_user_id": "trainer_9",
             "trainer_user_id": "trainer_9",
             "client_user_id": "client_9",
             "mode": "direct",
@@ -600,3 +609,70 @@ def test_invalid_role_returns_422() -> None:
         json={"role": "manager", "is_visible": True, "looking_for_trainer": False},
     )
     assert response.status_code == 422
+
+
+def test_relation_write_requires_bearer_token() -> None:
+    response = client.post(
+        "/api/v1/marketplace/relations",
+        json={
+            "trainer_user_id": "trainer_acl",
+            "client_user_id": "client_acl",
+            "mode": "invite",
+        },
+    )
+    assert response.status_code == 401
+
+
+def test_relation_write_rejects_outsider_actor() -> None:
+    trainer_id = f"trainer_acl_{uuid4().hex}"
+    client_id = f"client_acl_{uuid4().hex}"
+    outsider_id = f"outsider_acl_{uuid4().hex}"
+    client.put(
+        f"/api/v1/marketplace/users/{trainer_id}/profile",
+        json={"role": "trainer", "is_visible": True, "looking_for_trainer": False},
+    )
+    client.put(
+        f"/api/v1/marketplace/users/{client_id}/profile",
+        json={"role": "client", "is_visible": True, "looking_for_trainer": True},
+    )
+
+    create_response = client.post(
+        "/api/v1/marketplace/relations",
+        headers=auth_as(outsider_id),
+        json={
+            "trainer_user_id": trainer_id,
+            "client_user_id": client_id,
+            "mode": "invite",
+        },
+    )
+    assert create_response.status_code == 403
+
+    invited = client.post(
+        "/api/v1/marketplace/relations",
+        headers=auth_as(trainer_id),
+        json={
+            "trainer_user_id": trainer_id,
+            "client_user_id": client_id,
+            "mode": "invite",
+        },
+    )
+    assert invited.status_code == 201
+    relation_id = invited.json()["relation_id"]
+
+    trainer_accept = client.post(
+        f"/api/v1/marketplace/relations/{relation_id}/accept",
+        headers=auth_as(trainer_id),
+    )
+    assert trainer_accept.status_code == 403
+
+    outsider_accept = client.post(
+        f"/api/v1/marketplace/relations/{relation_id}/accept",
+        headers=auth_as(outsider_id),
+    )
+    assert outsider_accept.status_code == 403
+
+    outsider_leave = client.post(
+        f"/api/v1/marketplace/relations/{relation_id}/leave",
+        headers=auth_as(outsider_id),
+    )
+    assert outsider_leave.status_code == 403

@@ -15,9 +15,9 @@
 - `GET /ready`
 - `PUT /api/v1/marketplace/users/{user_id}/profile` - upsert discovery-профиля (`trainer`/`client`)
 - `GET /api/v1/marketplace/trainers` - список видимых тренеров
-- `POST /api/v1/marketplace/relations` - создать связь trainer-client (`invite`/`direct`) с `acting_user_id`
-- `POST /api/v1/marketplace/relations/{relation_id}/accept` - принять приглашение (`acting_user_id`)
-- `POST /api/v1/marketplace/relations/{relation_id}/leave` - завершить связь (`acting_user_id`)
+- `POST /api/v1/marketplace/relations` - создать связь trainer-client (`invite`/`direct`); actor берется из Bearer-токена
+- `POST /api/v1/marketplace/relations/{relation_id}/accept` - принять приглашение (только приглашенный клиент)
+- `POST /api/v1/marketplace/relations/{relation_id}/leave` - завершить связь (участник связи)
 - `GET /api/v1/marketplace/trainers/{trainer_user_id}/clients?status=active` - клиенты тренера
 - `GET /api/v1/marketplace/trainers/{trainer_user_id}/clients?status=invited` - отправленные приглашения тренера
 - `GET /api/v1/marketplace/trainers/{trainer_user_id}/clients?status=declined` - отклоненные приглашения тренера
@@ -30,9 +30,11 @@
 Ответы discovery/relations дополнительно включают `login` (если доступен из `auth-service`).
 
 Правила:
-- `invite` может создавать только тренер (`acting_user_id == trainer_user_id`).
+- Write-операции связей требуют `Authorization: Bearer <access_token>`; actor = `user_id` из токена.
+- `invite` может создавать только тренер (actor == `trainer_user_id`).
 - `direct` может создавать тренер или клиент (actor должен быть участником пары).
-- `accept`/`leave` может выполнять только участник связи.
+- `accept` может выполнять только приглашенный клиент.
+- `leave` может выполнять только участник связи.
 - `leave` из `invited` переводит связь в `declined`, из `active` в `ended`.
 
 Совместимость:

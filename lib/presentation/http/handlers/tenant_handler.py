@@ -5,8 +5,8 @@ from application.runtime import TenantApplicationRuntime
 from presentation.http.error_translator import ErrorTranslator
 from presentation.http.request_factory import TenantRequestFactory
 from presentation.http.response_factory import TenantResponseFactory
+from application.gateways import AuthUser
 from presentation.http.schemas import (
-    AcceptRelationRequest,
     AdminProfileListResponse,
     AdminRelationListResponse,
     AdminSetPublicationRequest,
@@ -15,7 +15,6 @@ from presentation.http.schemas import (
     CompatMembershipCheckResponse,
     CreateRelationRequest,
     DiscoveryProfileResponse,
-    LeaveRelationRequest,
     ProfileAccessCheckRequest,
     ProfileAccessCheckResponse,
     TrainerClientRelationResponse,
@@ -75,31 +74,36 @@ class TenantHttpHandler:
             self._error_translator.raise_http_error(exc)
         raise AssertionError("unreachable")
 
-    def create_relation(self, payload: CreateRelationRequest) -> TrainerClientRelationResponse:
+    def create_relation(self, authorization: str, payload: CreateRelationRequest) -> TrainerClientRelationResponse:
+        actor = self._require_current_user(authorization)
         try:
             with self._runtime.tenant_service_scope() as tenant_service:
-                relation = tenant_service.create_relation(self._request_factory.to_create_relation_command(payload))
-                return self._response_factory.from_domain_relation(relation)
-        except TenantError as exc:
-            self._error_translator.raise_http_error(exc)
-        raise AssertionError("unreachable")
-
-    def accept_relation(self, relation_id: str, payload: AcceptRelationRequest) -> TrainerClientRelationResponse:
-        try:
-            with self._runtime.tenant_service_scope() as tenant_service:
-                relation = tenant_service.accept_relation(
-                    self._request_factory.to_accept_relation_command(relation_id, payload)
+                relation = tenant_service.create_relation(
+                    self._request_factory.to_create_relation_command(payload, actor.user_id)
                 )
                 return self._response_factory.from_domain_relation(relation)
         except TenantError as exc:
             self._error_translator.raise_http_error(exc)
         raise AssertionError("unreachable")
 
-    def leave_relation(self, relation_id: str, payload: LeaveRelationRequest) -> TrainerClientRelationResponse:
+    def accept_relation(self, authorization: str, relation_id: str) -> TrainerClientRelationResponse:
+        actor = self._require_current_user(authorization)
+        try:
+            with self._runtime.tenant_service_scope() as tenant_service:
+                relation = tenant_service.accept_relation(
+                    self._request_factory.to_accept_relation_command(relation_id, actor.user_id)
+                )
+                return self._response_factory.from_domain_relation(relation)
+        except TenantError as exc:
+            self._error_translator.raise_http_error(exc)
+        raise AssertionError("unreachable")
+
+    def leave_relation(self, authorization: str, relation_id: str) -> TrainerClientRelationResponse:
+        actor = self._require_current_user(authorization)
         try:
             with self._runtime.tenant_service_scope() as tenant_service:
                 relation = tenant_service.leave_relation(
-                    self._request_factory.to_leave_relation_command(relation_id, payload)
+                    self._request_factory.to_leave_relation_command(relation_id, actor.user_id)
                 )
                 return self._response_factory.from_domain_relation(relation)
         except TenantError as exc:
@@ -282,6 +286,16 @@ class TenantHttpHandler:
             with self._runtime.tenant_service_scope() as tenant_service:
                 stats = tenant_service.admin_stats()
                 return AdminStatsResponse(**stats)
+        except TenantError as exc:
+            self._error_translator.raise_http_error(exc)
+        raise AssertionError("unreachable")
+
+    def _require_current_user(self, authorization: str) -> AuthUser:
+        access_token = authorization.removeprefix("Bearer ").strip()
+        if not access_token:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing Bearer token.")
+        try:
+            return self._runtime.auth_gateway.get_current_user(access_token)
         except TenantError as exc:
             self._error_translator.raise_http_error(exc)
         raise AssertionError("unreachable")

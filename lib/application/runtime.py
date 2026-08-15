@@ -14,7 +14,10 @@ class TenantApplicationRuntime:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._db_manager = DatabaseManager(settings.database_url)
-        self._profile_gateway = ProfileGateway(settings.profile_service_url)
+        self._profile_gateway = ProfileGateway(
+            settings.profile_service_url,
+            service_token=settings.internal_service_token,
+        )
         self._auth_gateway = AuthGateway(settings.auth_service_url)
 
     @property

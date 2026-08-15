@@ -9,3 +9,4 @@ class Settings(BaseSettings):
     alembic_ini_path: str = Field(default="alembic.ini", alias="ALEMBIC_INI_PATH")
     profile_service_url: str = Field(default="http://profile-service:8000", alias="PROFILE_SERVICE_URL")
     auth_service_url: str = Field(default="http://auth-service:8000", alias="AUTH_SERVICE_URL")
+    internal_service_token: str = Field(default="", alias="INTERNAL_SERVICE_TOKEN")

@@ -52,6 +52,23 @@ class DiscoveryProfileRepository:
         count = self._session.scalar(statement)
         return int(count or 0)
 
+    def list_visible_trainer_ids(self) -> list[str]:
+        statement = (
+            select(DiscoveryProfileModel.user_id)
+            .where(DiscoveryProfileModel.role == "trainer", DiscoveryProfileModel.is_visible.is_(True))
+            .order_by(DiscoveryProfileModel.updated_at.desc())
+        )
+        return list(self._session.scalars(statement).all())
+
+    def list_by_user_ids(self, user_ids: list[str]) -> list[DiscoveryProfileModel]:
+        if not user_ids:
+            return []
+        rows = list(
+            self._session.scalars(select(DiscoveryProfileModel).where(DiscoveryProfileModel.user_id.in_(user_ids))).all()
+        )
+        by_id = {row.user_id: row for row in rows}
+        return [by_id[user_id] for user_id in user_ids if user_id in by_id]
+
     def list_all(
         self,
         *,
@@ -137,6 +154,32 @@ class TrainerClientRelationRepository:
         if limit is not None:
             statement = statement.offset(offset).limit(limit)
         return list(self._session.scalars(statement).all())
+
+    def list_ids_by_trainer_statuses(
+        self,
+        trainer_user_id: str,
+        statuses: list[str],
+    ) -> list[tuple[str, str]]:
+        statement = (
+            select(TrainerClientRelationModel.relation_id, TrainerClientRelationModel.client_user_id)
+            .where(
+                TrainerClientRelationModel.trainer_user_id == trainer_user_id,
+                TrainerClientRelationModel.status.in_(statuses),
+            )
+            .order_by(TrainerClientRelationModel.updated_at.desc())
+        )
+        return [(row[0], row[1]) for row in self._session.execute(statement).all()]
+
+    def list_by_ids(self, relation_ids: list[str]) -> list[TrainerClientRelationModel]:
+        if not relation_ids:
+            return []
+        rows = list(
+            self._session.scalars(
+                select(TrainerClientRelationModel).where(TrainerClientRelationModel.relation_id.in_(relation_ids))
+            ).all()
+        )
+        by_id = {row.relation_id: row for row in rows}
+        return [by_id[relation_id] for relation_id in relation_ids if relation_id in by_id]
 
     def list_incoming_invites(self, client_user_id: str) -> list[TrainerClientRelationModel]:
         statement = (

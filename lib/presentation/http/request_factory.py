@@ -12,10 +12,8 @@ from application.commands import (
     UpsertDiscoveryProfileCommand,
 )
 from presentation.http.schemas import (
-    AcceptRelationRequest,
     CompatMembershipCheckRequest,
     CreateRelationRequest,
-    LeaveRelationRequest,
     ProfileAccessCheckRequest,
     UpsertDiscoveryProfileRequest,
 )
@@ -32,21 +30,21 @@ class TenantRequestFactory:
         )
 
     @staticmethod
-    def to_create_relation_command(payload: CreateRelationRequest) -> CreateRelationCommand:
+    def to_create_relation_command(payload: CreateRelationRequest, acting_user_id: str) -> CreateRelationCommand:
         return CreateRelationCommand(
-            acting_user_id=payload.acting_user_id,
+            acting_user_id=acting_user_id,
             trainer_user_id=payload.trainer_user_id,
             client_user_id=payload.client_user_id,
             mode=payload.mode,
         )
 
     @staticmethod
-    def to_accept_relation_command(relation_id: str, payload: AcceptRelationRequest) -> AcceptRelationCommand:
-        return AcceptRelationCommand(relation_id=relation_id, acting_user_id=payload.acting_user_id)
+    def to_accept_relation_command(relation_id: str, acting_user_id: str) -> AcceptRelationCommand:
+        return AcceptRelationCommand(relation_id=relation_id, acting_user_id=acting_user_id)
 
     @staticmethod
-    def to_leave_relation_command(relation_id: str, payload: LeaveRelationRequest) -> LeaveRelationCommand:
-        return LeaveRelationCommand(relation_id=relation_id, acting_user_id=payload.acting_user_id)
+    def to_leave_relation_command(relation_id: str, acting_user_id: str) -> LeaveRelationCommand:
+        return LeaveRelationCommand(relation_id=relation_id, acting_user_id=acting_user_id)
 
     @staticmethod
     def to_list_trainer_clients_command(trainer_user_id: str, status: str) -> ListTrainerClientsCommand:
