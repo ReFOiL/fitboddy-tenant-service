@@ -7,6 +7,7 @@ from presentation.http.schemas import (
     DiscoveryProfileResponse,
     ProfileAccessCheckRequest,
     ProfileAccessCheckResponse,
+    RelationAccessCheckResponse,
     TrainerClientRelationResponse,
     TrainerFunnelResponse,
     TrainerPublicationStatusResponse,
@@ -82,6 +83,12 @@ class TenantRoutes:
             self.check_profile_access,
             methods=["POST"],
             response_model=ProfileAccessCheckResponse,
+        )
+        self.router.add_api_route(
+            "/marketplace/internal/relations/access",
+            self.check_relation_access,
+            methods=["GET"],
+            response_model=RelationAccessCheckResponse,
         )
         # Temporary compatibility endpoint for existing profile-service checks.
         self.router.add_api_route(
@@ -176,6 +183,19 @@ class TenantRoutes:
         request: Request, payload: ProfileAccessCheckRequest
     ) -> ProfileAccessCheckResponse:
         return request.app.state.tenant_handler.check_profile_access(payload)
+
+    @staticmethod
+    def check_relation_access(
+        request: Request,
+        trainer_user_id: str = Query(min_length=1, max_length=64),
+        client_user_id: str = Query(min_length=1, max_length=64),
+        x_service_token: str | None = Header(default=None, alias="X-Service-Token"),
+    ) -> RelationAccessCheckResponse:
+        return request.app.state.tenant_handler.check_relation_access(
+            trainer_user_id=trainer_user_id,
+            client_user_id=client_user_id,
+            service_token=x_service_token,
+        )
 
     @staticmethod
     def compat_check_membership(

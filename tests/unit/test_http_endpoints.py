@@ -676,3 +676,55 @@ def test_relation_write_rejects_outsider_actor() -> None:
         headers=auth_as(outsider_id),
     )
     assert outsider_leave.status_code == 403
+
+
+def test_internal_relation_access_requires_service_token() -> None:
+    denied = client.get(
+        "/api/v1/marketplace/internal/relations/access",
+        params={"trainer_user_id": "trainer_acl", "client_user_id": "client_acl"},
+    )
+    assert denied.status_code == 401
+
+
+def test_internal_relation_access_check() -> None:
+    client.put(
+        "/api/v1/marketplace/users/trainer_acl/profile",
+        json={"role": "trainer", "is_visible": True, "looking_for_trainer": False},
+    )
+    client.put(
+        "/api/v1/marketplace/users/client_acl/profile",
+        json={"role": "client", "is_visible": True, "looking_for_trainer": True},
+    )
+    headers = {"X-Service-Token": "test-service-token"}
+    missing = client.get(
+        "/api/v1/marketplace/internal/relations/access",
+        params={"trainer_user_id": "trainer_acl", "client_user_id": "client_acl"},
+        headers=headers,
+    )
+    assert missing.status_code == 200
+    assert missing.json() == {"allowed": False, "relation_id": None, "status": None}
+
+    created = client.post(
+        "/api/v1/marketplace/relations",
+        headers=auth_as("trainer_acl"),
+        json={"trainer_user_id": "trainer_acl", "client_user_id": "client_acl", "mode": "direct"},
+    )
+    assert created.status_code == 201
+    relation_id = created.json()["relation_id"]
+
+    active = client.get(
+        "/api/v1/marketplace/internal/relations/access",
+        params={"trainer_user_id": "trainer_acl", "client_user_id": "client_acl"},
+        headers=headers,
+    )
+    assert active.status_code == 200
+    assert active.json() == {"allowed": True, "relation_id": relation_id, "status": "active"}
+
+    client.post(f"/api/v1/marketplace/relations/{relation_id}/leave", headers=auth_as("trainer_acl"))
+    ended = client.get(
+        "/api/v1/marketplace/internal/relations/access",
+        params={"trainer_user_id": "trainer_acl", "client_user_id": "client_acl"},
+        headers=headers,
+    )
+    assert ended.status_code == 200
+    assert ended.json() == {"allowed": False, "relation_id": relation_id, "status": "ended"}

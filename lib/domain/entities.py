@@ -29,6 +29,13 @@ class TrainerClientRelation:
 
 
 @dataclass(frozen=True)
+class RelationAccess:
+    allowed: bool
+    relation_id: str | None
+    status: str | None
+
+
+@dataclass(frozen=True)
 class TrainerFunnelMetrics:
     trainer_user_id: str
     invites_sent: int

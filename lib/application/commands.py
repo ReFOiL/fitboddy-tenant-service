@@ -69,3 +69,9 @@ class GetTrainerPublicationStatusCommand:
 class CheckProfileAccessCommand:
     user_id: str
     allowed_roles: list[str]
+
+
+@dataclass(frozen=True)
+class CheckRelationAccessCommand:
+    trainer_user_id: str
+    client_user_id: str

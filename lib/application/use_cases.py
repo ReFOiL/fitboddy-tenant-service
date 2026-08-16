@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from application.commands import (
     AcceptRelationCommand,
     CheckProfileAccessCommand,
+    CheckRelationAccessCommand,
     CreateRelationCommand,
     GetClientActiveRelationCommand,
     GetTrainerFunnelCommand,
@@ -22,7 +23,7 @@ from application.errors import ForbiddenError, ProfileNotFoundError, RelationNot
 from application.gateways import AuthGateway, ProfileGateway
 from application.models import DiscoveryProfileModel, TrainerClientRelationModel
 from application.repositories import DiscoveryProfileRepository, TrainerClientRelationRepository
-from domain.entities import DiscoveryProfile, TrainerClientRelation, TrainerFunnelMetrics
+from domain.entities import DiscoveryProfile, RelationAccess, TrainerClientRelation, TrainerFunnelMetrics
 
 
 class TenantService:
@@ -427,6 +428,16 @@ class TenantService:
         if command.allowed_roles and profile.role not in command.allowed_roles:
             return None
         return self._to_domain_profile(profile)
+
+    def check_relation_access(self, command: CheckRelationAccessCommand) -> RelationAccess:
+        relation = self._relations.find_by_pair(command.trainer_user_id, command.client_user_id)
+        if relation is None:
+            return RelationAccess(allowed=False, relation_id=None, status=None)
+        return RelationAccess(
+            allowed=relation.status == "active",
+            relation_id=relation.relation_id,
+            status=relation.status,
+        )
 
     def _close_existing_active_client_relation(self, client_user_id: str, now: datetime) -> None:
         existing_active = self._relations.find_active_by_client(client_user_id)

@@ -1,6 +1,7 @@
 from application.commands import (
     AcceptRelationCommand,
     CheckProfileAccessCommand,
+    CheckRelationAccessCommand,
     CreateRelationCommand,
     GetClientActiveRelationCommand,
     GetTrainerFunnelCommand,
@@ -97,3 +98,7 @@ class TenantRequestFactory:
     @staticmethod
     def to_profile_access_command(payload: ProfileAccessCheckRequest) -> CheckProfileAccessCommand:
         return CheckProfileAccessCommand(user_id=payload.user_id, allowed_roles=payload.allowed_roles)
+
+    @staticmethod
+    def to_check_relation_access_command(trainer_user_id: str, client_user_id: str) -> CheckRelationAccessCommand:
+        return CheckRelationAccessCommand(trainer_user_id=trainer_user_id, client_user_id=client_user_id)

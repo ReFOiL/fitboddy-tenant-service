@@ -26,6 +26,7 @@
 - `GET /api/v1/marketplace/trainers/{trainer_user_id}/publication-status` - статус публикации тренера (`is_published`)
 - `GET /api/v1/marketplace/clients/{client_user_id}/invites` - входящие приглашения клиента
 - `POST /api/v1/marketplace/profiles/check` - проверить существование профиля и роль (`exists`, `role`)
+- `GET /api/v1/marketplace/internal/relations/access` - internal ACL для чата (`X-Service-Token`, `allowed`/`relation_id`/`status`)
 
 Ответы discovery/relations дополнительно включают `login` (если доступен из `auth-service`).
 

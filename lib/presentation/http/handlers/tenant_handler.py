@@ -1,3 +1,5 @@
+from hmac import compare_digest
+
 from fastapi import HTTPException, status
 
 from application.errors import TenantError
@@ -17,6 +19,7 @@ from presentation.http.schemas import (
     DiscoveryProfileResponse,
     ProfileAccessCheckRequest,
     ProfileAccessCheckResponse,
+    RelationAccessCheckResponse,
     TrainerClientRelationResponse,
     TrainerFunnelResponse,
     TrainerPublicationStatusResponse,
@@ -195,6 +198,28 @@ class TenantHttpHandler:
             self._error_translator.raise_http_error(exc)
         raise AssertionError("unreachable")
 
+    def check_relation_access(
+        self,
+        *,
+        trainer_user_id: str,
+        client_user_id: str,
+        service_token: str | None,
+    ) -> RelationAccessCheckResponse:
+        self._require_service_token(service_token)
+        try:
+            with self._runtime.tenant_service_scope() as tenant_service:
+                access = tenant_service.check_relation_access(
+                    self._request_factory.to_check_relation_access_command(trainer_user_id, client_user_id)
+                )
+                return RelationAccessCheckResponse(
+                    allowed=access.allowed,
+                    relation_id=access.relation_id,
+                    status=access.status,
+                )
+        except TenantError as exc:
+            self._error_translator.raise_http_error(exc)
+        raise AssertionError("unreachable")
+
     def check_profile_access(self, payload: ProfileAccessCheckRequest) -> ProfileAccessCheckResponse:
         try:
             with self._runtime.tenant_service_scope() as tenant_service:
@@ -289,6 +314,12 @@ class TenantHttpHandler:
         except TenantError as exc:
             self._error_translator.raise_http_error(exc)
         raise AssertionError("unreachable")
+
+    def _require_service_token(self, service_token: str | None) -> None:
+        expected = self._runtime.internal_service_token
+        provided = (service_token or "").strip()
+        if not expected or not provided or not compare_digest(provided, expected):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid service token")
 
     def _require_current_user(self, authorization: str) -> AuthUser:
         access_token = authorization.removeprefix("Bearer ").strip()

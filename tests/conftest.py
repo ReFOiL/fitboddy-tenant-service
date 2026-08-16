@@ -15,6 +15,7 @@ if TEST_DB_PATH.exists():
 
 os.environ["DATABASE_URL"] = f"sqlite+pysqlite:///{TEST_DB_PATH.as_posix()}"
 os.environ["ALEMBIC_INI_PATH"] = str((ROOT / "alembic.ini").resolve())
+os.environ["INTERNAL_SERVICE_TOKEN"] = "test-service-token"
 
 alembic_cfg = Config(os.environ["ALEMBIC_INI_PATH"])
 alembic_cfg.set_main_option("sqlalchemy.url", os.environ["DATABASE_URL"])

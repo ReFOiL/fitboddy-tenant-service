@@ -24,6 +24,10 @@ class TenantApplicationRuntime:
     def auth_gateway(self) -> AuthGateway:
         return self._auth_gateway
 
+    @property
+    def internal_service_token(self) -> str:
+        return self._settings.internal_service_token
+
     @contextmanager
     def tenant_service_scope(self):
         session = self._db_manager.create_session()

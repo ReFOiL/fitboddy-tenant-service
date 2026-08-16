@@ -78,6 +78,12 @@ class ProfileAccessCheckResponse(BaseModel):
     role: str | None = None
 
 
+class RelationAccessCheckResponse(BaseModel):
+    allowed: bool
+    relation_id: str | None = None
+    status: str | None = None
+
+
 class AdminSetPublicationRequest(BaseModel):
     is_visible: bool
 
