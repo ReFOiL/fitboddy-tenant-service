@@ -1,35 +1,64 @@
 from __future__ import annotations
 
+import secrets
 from datetime import datetime, UTC
 from uuid import uuid4
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from application.commands import (
+    AcceptInviteCodeCommand,
     AcceptRelationCommand,
     CheckProfileAccessCommand,
     CheckRelationAccessCommand,
     CreateRelationCommand,
     GetClientActiveRelationCommand,
+    GetOrCreateInviteLinkCommand,
     GetTrainerFunnelCommand,
     GetTrainerPublicationStatusCommand,
     LeaveRelationCommand,
     ListDiscoveryProfilesCommand,
     ListIncomingInvitesCommand,
     ListTrainerClientsCommand,
+    ResolveInviteCodeCommand,
+    RotateInviteLinkCommand,
     UpsertDiscoveryProfileCommand,
 )
-from application.errors import ForbiddenError, ProfileNotFoundError, RelationNotFoundError, ValidationError
+from application.errors import (
+    AlreadyLinkedError,
+    ForbiddenError,
+    InviteCodeNotFoundError,
+    ProfileNotFoundError,
+    RelationNotFoundError,
+    ValidationError,
+)
 from application.gateways import AuthGateway, ProfileGateway
-from application.models import DiscoveryProfileModel, TrainerClientRelationModel
-from application.repositories import DiscoveryProfileRepository, TrainerClientRelationRepository
-from domain.entities import DiscoveryProfile, RelationAccess, TrainerClientRelation, TrainerFunnelMetrics
+from application.models import DiscoveryProfileModel, TrainerClientRelationModel, TrainerInviteCodeModel
+from application.repositories import (
+    DiscoveryProfileRepository,
+    TrainerClientRelationRepository,
+    TrainerInviteCodeRepository,
+)
+from domain.entities import (
+    DiscoveryProfile,
+    PublicTrainerInvite,
+    RelationAccess,
+    TrainerClientRelation,
+    TrainerFunnelMetrics,
+    TrainerInviteLink,
+)
 
 
 class TenantService:
     _ALLOWED_ROLES = {"trainer", "client"}
     _ALLOWED_RELATION_MODES = {"invite", "direct"}
     _ALLOWED_RELATION_STATUSES = {"invited", "active", "declined", "ended", "left"}
+    _INVITE_CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
+    _INVITE_CODE_LENGTH = 6
+    _INVITE_CODE_ATTEMPTS = 8
+    _INVITE_CODE_SOURCE = "invite_code"
+    _INVITE_PATH_PREFIX = "/i/"
 
     def __init__(
         self,
@@ -40,6 +69,7 @@ class TenantService:
         self._session = session
         self._profiles = DiscoveryProfileRepository(session)
         self._relations = TrainerClientRelationRepository(session)
+        self._invite_codes = TrainerInviteCodeRepository(session)
         self._profile_gateway = profile_gateway
         self._auth_gateway = auth_gateway
 
@@ -227,6 +257,77 @@ class TenantService:
         if profile is None:
             return False
         return profile.role == "trainer" and profile.is_visible
+
+    def get_or_create_invite_link(self, command: GetOrCreateInviteLinkCommand) -> TrainerInviteLink:
+        self._require_trainer_profile(command.acting_user_id)
+        existing = self._invite_codes.find_by_trainer(command.acting_user_id)
+        if existing is None:
+            now = datetime.now(UTC).replace(tzinfo=None)
+            existing = self._create_invite_code(command.acting_user_id, now)
+            self._session.commit()
+        return self._to_invite_link(existing)
+
+    def rotate_invite_link(self, command: RotateInviteLinkCommand) -> TrainerInviteLink:
+        self._require_trainer_profile(command.acting_user_id)
+        now = datetime.now(UTC).replace(tzinfo=None)
+        existing = self._invite_codes.find_by_trainer(command.acting_user_id)
+        if existing is None:
+            rotated = self._create_invite_code(command.acting_user_id, now)
+        else:
+            rotated = self._replace_invite_code(existing, now)
+        self._session.commit()
+        return self._to_invite_link(rotated)
+
+    def resolve_invite_code(self, command: ResolveInviteCodeCommand) -> PublicTrainerInvite:
+        invite = self._find_invite_code(command.code)
+        names = self._resolve_names([invite.trainer_user_id])
+        logins = self._resolve_logins([invite.trainer_user_id])
+        return PublicTrainerInvite(
+            code=invite.code,
+            trainer_user_id=invite.trainer_user_id,
+            trainer_display_name=names.get(invite.trainer_user_id),
+            trainer_login=logins.get(invite.trainer_user_id),
+        )
+
+    def accept_invite_code(self, command: AcceptInviteCodeCommand) -> TrainerClientRelation:
+        if command.acting_role == "trainer":
+            raise ForbiddenError("trainers cannot accept invite")
+        invite = self._find_invite_code(command.code)
+        if command.acting_user_id == invite.trainer_user_id:
+            raise ForbiddenError("trainers cannot accept invite")
+
+        now = datetime.now(UTC).replace(tzinfo=None)
+        client_profile = self._client_profile_for_invite(command.acting_user_id, now)
+        existing_active = self._relations.find_active_by_client(command.acting_user_id)
+        if existing_active is not None:
+            if existing_active.trainer_user_id == invite.trainer_user_id:
+                return self._with_logins(existing_active)
+            if not command.force:
+                raise AlreadyLinkedError(existing_active.trainer_user_id)
+            self._close_existing_active_client_relation(command.acting_user_id, now)
+
+        relation = self._relations.find_by_pair(invite.trainer_user_id, command.acting_user_id)
+        if relation is None:
+            relation = self._relations.add(
+                TrainerClientRelationModel(
+                    relation_id=str(uuid4()),
+                    trainer_user_id=invite.trainer_user_id,
+                    client_user_id=command.acting_user_id,
+                    status="active",
+                    source=self._INVITE_CODE_SOURCE,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+        else:
+            relation.status = "active"
+            relation.updated_at = now
+            self._session.flush()
+
+        client_profile.updated_at = now
+        self._session.flush()
+        self._session.commit()
+        return self._with_logins(relation)
 
     def accept_relation(self, command: AcceptRelationCommand) -> TrainerClientRelation:
         relation = self._relations.find_by_id(command.relation_id)
@@ -438,6 +539,105 @@ class TenantService:
             relation_id=relation.relation_id,
             status=relation.status,
         )
+
+    def _require_trainer_profile(self, user_id: str) -> DiscoveryProfileModel:
+        profile = self._profiles.find_by_id(user_id)
+        if profile is None or profile.role != "trainer":
+            raise ForbiddenError("only trainer can manage invite link")
+        return profile
+
+    def _client_profile_for_invite(self, user_id: str, now: datetime) -> DiscoveryProfileModel:
+        profile = self._profiles.find_by_id(user_id)
+        if profile is None:
+            return self._profiles.upsert(
+                DiscoveryProfileModel(
+                    user_id=user_id,
+                    role="client",
+                    is_visible=False,
+                    looking_for_trainer=False,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+        if profile.role != "client":
+            raise ForbiddenError("trainers cannot accept invite")
+        return profile
+
+    def _find_invite_code(self, raw_code: str) -> TrainerInviteCodeModel:
+        code = self._normalize_invite_code(raw_code)
+        if code is None:
+            raise InviteCodeNotFoundError("invite code not found")
+        invite = self._invite_codes.find_by_code(code)
+        if invite is None:
+            raise InviteCodeNotFoundError("invite code not found")
+        trainer = self._profiles.find_by_id(invite.trainer_user_id)
+        if trainer is None or trainer.role != "trainer":
+            raise InviteCodeNotFoundError("invite code not found")
+        return invite
+
+    def _create_invite_code(self, trainer_user_id: str, now: datetime) -> TrainerInviteCodeModel:
+        for _attempt in range(self._INVITE_CODE_ATTEMPTS):
+            row = TrainerInviteCodeModel(
+                trainer_user_id=trainer_user_id,
+                code=self._generate_invite_code(),
+                created_at=now,
+                updated_at=now,
+            )
+            try:
+                return self._invite_codes.add(row)
+            except IntegrityError:
+                self._session.rollback()
+                existing = self._invite_codes.find_by_trainer(trainer_user_id)
+                if existing is not None:
+                    return existing
+        raise ValidationError("failed to allocate invite code")
+
+    def _replace_invite_code(self, current: TrainerInviteCodeModel, now: datetime) -> TrainerInviteCodeModel:
+        trainer_user_id = current.trainer_user_id
+        previous = current.code
+        for _attempt in range(self._INVITE_CODE_ATTEMPTS):
+            code = self._generate_invite_code()
+            if code == previous:
+                continue
+            current.code = code
+            current.updated_at = now
+            try:
+                self._session.flush()
+            except IntegrityError:
+                self._session.rollback()
+                reloaded = self._invite_codes.find_by_trainer(trainer_user_id)
+                if reloaded is None:
+                    return self._create_invite_code(trainer_user_id, now)
+                current = reloaded
+                previous = current.code
+                continue
+            return current
+        raise ValidationError("failed to allocate invite code")
+
+    def _with_logins(self, relation: TrainerClientRelationModel) -> TrainerClientRelation:
+        relation_logins = self._resolve_logins([relation.trainer_user_id, relation.client_user_id])
+        return self._to_domain_relation(
+            relation,
+            trainer_login=relation_logins.get(relation.trainer_user_id),
+            client_login=relation_logins.get(relation.client_user_id),
+        )
+
+    @classmethod
+    def _generate_invite_code(cls) -> str:
+        return "".join(secrets.choice(cls._INVITE_CODE_ALPHABET) for _ in range(cls._INVITE_CODE_LENGTH))
+
+    @classmethod
+    def _normalize_invite_code(cls, raw_code: str) -> str | None:
+        code = raw_code.strip().upper()
+        if len(code) < 4 or len(code) > 8:
+            return None
+        if any(char not in cls._INVITE_CODE_ALPHABET for char in code):
+            return None
+        return code
+
+    @classmethod
+    def _to_invite_link(cls, model: TrainerInviteCodeModel) -> TrainerInviteLink:
+        return TrainerInviteLink(code=model.code, invite_path=f"{cls._INVITE_PATH_PREFIX}{model.code}")
 
     def _close_existing_active_client_relation(self, client_user_id: str, now: datetime) -> None:
         existing_active = self._relations.find_active_by_client(client_user_id)

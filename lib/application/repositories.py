@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from application.errors import RelationConflictError
-from application.models import DiscoveryProfileModel, TrainerClientRelationModel
+from application.models import DiscoveryProfileModel, TrainerClientRelationModel, TrainerInviteCodeModel
 
 
 class DiscoveryProfileRepository:
@@ -238,4 +238,21 @@ class TrainerClientRelationRepository:
             )
         )
         return int(count or 0)
+
+
+class TrainerInviteCodeRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def find_by_trainer(self, trainer_user_id: str) -> TrainerInviteCodeModel | None:
+        return self._session.get(TrainerInviteCodeModel, trainer_user_id)
+
+    def find_by_code(self, code: str) -> TrainerInviteCodeModel | None:
+        statement = select(TrainerInviteCodeModel).where(TrainerInviteCodeModel.code == code)
+        return self._session.scalar(statement)
+
+    def add(self, invite_code: TrainerInviteCodeModel) -> TrainerInviteCodeModel:
+        self._session.add(invite_code)
+        self._session.flush()
+        return invite_code
 

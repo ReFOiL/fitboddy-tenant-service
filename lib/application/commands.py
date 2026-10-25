@@ -75,3 +75,26 @@ class CheckProfileAccessCommand:
 class CheckRelationAccessCommand:
     trainer_user_id: str
     client_user_id: str
+
+
+@dataclass(frozen=True)
+class GetOrCreateInviteLinkCommand:
+    acting_user_id: str
+
+
+@dataclass(frozen=True)
+class RotateInviteLinkCommand:
+    acting_user_id: str
+
+
+@dataclass(frozen=True)
+class ResolveInviteCodeCommand:
+    code: str
+
+
+@dataclass(frozen=True)
+class AcceptInviteCodeCommand:
+    code: str
+    acting_user_id: str
+    acting_role: str
+    force: bool = False

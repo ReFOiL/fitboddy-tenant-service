@@ -36,6 +36,20 @@ class RelationAccess:
 
 
 @dataclass(frozen=True)
+class TrainerInviteLink:
+    code: str
+    invite_path: str
+
+
+@dataclass(frozen=True)
+class PublicTrainerInvite:
+    code: str
+    trainer_user_id: str
+    trainer_display_name: str | None
+    trainer_login: str | None
+
+
+@dataclass(frozen=True)
 class TrainerFunnelMetrics:
     trainer_user_id: str
     invites_sent: int

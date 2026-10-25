@@ -7,9 +7,11 @@ from presentation.http.schemas import (
     DiscoveryProfileResponse,
     ProfileAccessCheckRequest,
     ProfileAccessCheckResponse,
+    PublicInviteResponse,
     RelationAccessCheckResponse,
     TrainerClientRelationResponse,
     TrainerFunnelResponse,
+    TrainerInviteLinkResponse,
     TrainerPublicationStatusResponse,
     UpsertDiscoveryProfileRequest,
 )
@@ -28,6 +30,30 @@ class TenantRoutes:
         )
         self.router.add_api_route(
             "/marketplace/trainers", self.list_trainers, methods=["GET"], response_model=list[DiscoveryProfileResponse]
+        )
+        self.router.add_api_route(
+            "/marketplace/trainers/me/invite-link",
+            self.get_my_invite_link,
+            methods=["GET"],
+            response_model=TrainerInviteLinkResponse,
+        )
+        self.router.add_api_route(
+            "/marketplace/trainers/me/invite-link/rotate",
+            self.rotate_my_invite_link,
+            methods=["POST"],
+            response_model=TrainerInviteLinkResponse,
+        )
+        self.router.add_api_route(
+            "/marketplace/invite/{code}",
+            self.resolve_invite_code,
+            methods=["GET"],
+            response_model=PublicInviteResponse,
+        )
+        self.router.add_api_route(
+            "/marketplace/invite/{code}/accept",
+            self.accept_invite_code,
+            methods=["POST"],
+            response_model=TrainerClientRelationResponse,
         )
         self.router.add_api_route(
             "/marketplace/relations",
@@ -117,6 +143,33 @@ class TenantRoutes:
         )
         TenantRoutes._set_pagination_headers(response, page, page_size, total)
         return profiles
+
+    @staticmethod
+    def get_my_invite_link(
+        request: Request,
+        authorization: str = Header(default="", alias="Authorization"),
+    ) -> TrainerInviteLinkResponse:
+        return request.app.state.tenant_handler.get_my_invite_link(authorization)
+
+    @staticmethod
+    def rotate_my_invite_link(
+        request: Request,
+        authorization: str = Header(default="", alias="Authorization"),
+    ) -> TrainerInviteLinkResponse:
+        return request.app.state.tenant_handler.rotate_my_invite_link(authorization)
+
+    @staticmethod
+    def resolve_invite_code(request: Request, code: str) -> PublicInviteResponse:
+        return request.app.state.tenant_handler.resolve_invite_code(code)
+
+    @staticmethod
+    def accept_invite_code(
+        request: Request,
+        code: str,
+        authorization: str = Header(default="", alias="Authorization"),
+        force: bool = Query(default=False),
+    ) -> TrainerClientRelationResponse:
+        return request.app.state.tenant_handler.accept_invite_code(authorization, code, force)
 
     @staticmethod
     def create_relation(
