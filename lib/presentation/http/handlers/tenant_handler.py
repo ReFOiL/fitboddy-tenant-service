@@ -19,9 +19,11 @@ from presentation.http.schemas import (
     DiscoveryProfileResponse,
     ProfileAccessCheckRequest,
     ProfileAccessCheckResponse,
+    PublicInviteResponse,
     RelationAccessCheckResponse,
     TrainerClientRelationResponse,
     TrainerFunnelResponse,
+    TrainerInviteLinkResponse,
     TrainerPublicationStatusResponse,
     UpsertDiscoveryProfileRequest,
 )
@@ -83,6 +85,56 @@ class TenantHttpHandler:
             with self._runtime.tenant_service_scope() as tenant_service:
                 relation = tenant_service.create_relation(
                     self._request_factory.to_create_relation_command(payload, actor.user_id)
+                )
+                return self._response_factory.from_domain_relation(relation)
+        except TenantError as exc:
+            self._error_translator.raise_http_error(exc)
+        raise AssertionError("unreachable")
+
+    def get_my_invite_link(self, authorization: str) -> TrainerInviteLinkResponse:
+        actor = self._require_current_user(authorization)
+        try:
+            with self._runtime.tenant_service_scope() as tenant_service:
+                link = tenant_service.get_or_create_invite_link(
+                    self._request_factory.to_get_or_create_invite_link_command(actor.user_id)
+                )
+                return self._response_factory.from_domain_invite_link(link)
+        except TenantError as exc:
+            self._error_translator.raise_http_error(exc)
+        raise AssertionError("unreachable")
+
+    def rotate_my_invite_link(self, authorization: str) -> TrainerInviteLinkResponse:
+        actor = self._require_current_user(authorization)
+        try:
+            with self._runtime.tenant_service_scope() as tenant_service:
+                link = tenant_service.rotate_invite_link(
+                    self._request_factory.to_rotate_invite_link_command(actor.user_id)
+                )
+                return self._response_factory.from_domain_invite_link(link)
+        except TenantError as exc:
+            self._error_translator.raise_http_error(exc)
+        raise AssertionError("unreachable")
+
+    def resolve_invite_code(self, code: str) -> PublicInviteResponse:
+        try:
+            with self._runtime.tenant_service_scope() as tenant_service:
+                invite = tenant_service.resolve_invite_code(self._request_factory.to_resolve_invite_code_command(code))
+                return self._response_factory.from_domain_public_invite(invite)
+        except TenantError as exc:
+            self._error_translator.raise_http_error(exc)
+        raise AssertionError("unreachable")
+
+    def accept_invite_code(self, authorization: str, code: str, force: bool) -> TrainerClientRelationResponse:
+        actor = self._require_current_user(authorization)
+        try:
+            with self._runtime.tenant_service_scope() as tenant_service:
+                relation = tenant_service.accept_invite_code(
+                    self._request_factory.to_accept_invite_code_command(
+                        code=code,
+                        acting_user_id=actor.user_id,
+                        acting_role=actor.role,
+                        force=force,
+                    )
                 )
                 return self._response_factory.from_domain_relation(relation)
         except TenantError as exc:

@@ -68,6 +68,18 @@ class TrainerPublicationStatusResponse(BaseModel):
     is_published: bool
 
 
+class TrainerInviteLinkResponse(BaseModel):
+    code: str
+    invite_path: str
+
+
+class PublicInviteResponse(BaseModel):
+    code: str
+    trainer_user_id: str
+    trainer_display_name: str | None = None
+    trainer_login: str | None = None
+
+
 class CompatMembershipCheckResponse(BaseModel):
     is_member: bool
     role: str | None = None

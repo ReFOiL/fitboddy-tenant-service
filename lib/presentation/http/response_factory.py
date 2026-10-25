@@ -1,5 +1,17 @@
-from domain.entities import DiscoveryProfile, TrainerClientRelation, TrainerFunnelMetrics
-from presentation.http.schemas import DiscoveryProfileResponse, TrainerClientRelationResponse, TrainerFunnelResponse
+from domain.entities import (
+    DiscoveryProfile,
+    PublicTrainerInvite,
+    TrainerClientRelation,
+    TrainerFunnelMetrics,
+    TrainerInviteLink,
+)
+from presentation.http.schemas import (
+    DiscoveryProfileResponse,
+    PublicInviteResponse,
+    TrainerClientRelationResponse,
+    TrainerFunnelResponse,
+    TrainerInviteLinkResponse,
+)
 
 
 class TenantResponseFactory:
@@ -29,6 +41,19 @@ class TenantResponseFactory:
             source=relation.source,
             created_at=relation.created_at,
             updated_at=relation.updated_at,
+        )
+
+    @staticmethod
+    def from_domain_invite_link(link: TrainerInviteLink) -> TrainerInviteLinkResponse:
+        return TrainerInviteLinkResponse(code=link.code, invite_path=link.invite_path)
+
+    @staticmethod
+    def from_domain_public_invite(invite: PublicTrainerInvite) -> PublicInviteResponse:
+        return PublicInviteResponse(
+            code=invite.code,
+            trainer_user_id=invite.trainer_user_id,
+            trainer_display_name=invite.trainer_display_name,
+            trainer_login=invite.trainer_login,
         )
 
     @staticmethod

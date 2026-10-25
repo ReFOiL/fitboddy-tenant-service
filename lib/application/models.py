@@ -19,6 +19,16 @@ class DiscoveryProfileModel(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False)
 
 
+class TrainerInviteCodeModel(Base):
+    __tablename__ = "trainer_invite_codes"
+    __table_args__ = (UniqueConstraint("code", name="uq_trainer_invite_codes_code"),)
+
+    trainer_user_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    code: Mapped[str] = mapped_column(String(8), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False)
+
+
 class TrainerClientRelationModel(Base):
     __tablename__ = "trainer_client_relations"
     __table_args__ = (UniqueConstraint("trainer_user_id", "client_user_id", name="uq_trainer_client_pair"),)

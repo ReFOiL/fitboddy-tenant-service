@@ -1,15 +1,19 @@
 from application.commands import (
+    AcceptInviteCodeCommand,
     AcceptRelationCommand,
     CheckProfileAccessCommand,
     CheckRelationAccessCommand,
     CreateRelationCommand,
     GetClientActiveRelationCommand,
+    GetOrCreateInviteLinkCommand,
     GetTrainerFunnelCommand,
     GetTrainerPublicationStatusCommand,
     LeaveRelationCommand,
     ListDiscoveryProfilesCommand,
     ListIncomingInvitesCommand,
     ListTrainerClientsCommand,
+    ResolveInviteCodeCommand,
+    RotateInviteLinkCommand,
     UpsertDiscoveryProfileCommand,
 )
 from presentation.http.schemas import (
@@ -102,3 +106,29 @@ class TenantRequestFactory:
     @staticmethod
     def to_check_relation_access_command(trainer_user_id: str, client_user_id: str) -> CheckRelationAccessCommand:
         return CheckRelationAccessCommand(trainer_user_id=trainer_user_id, client_user_id=client_user_id)
+
+    @staticmethod
+    def to_get_or_create_invite_link_command(acting_user_id: str) -> GetOrCreateInviteLinkCommand:
+        return GetOrCreateInviteLinkCommand(acting_user_id=acting_user_id)
+
+    @staticmethod
+    def to_rotate_invite_link_command(acting_user_id: str) -> RotateInviteLinkCommand:
+        return RotateInviteLinkCommand(acting_user_id=acting_user_id)
+
+    @staticmethod
+    def to_resolve_invite_code_command(code: str) -> ResolveInviteCodeCommand:
+        return ResolveInviteCodeCommand(code=code)
+
+    @staticmethod
+    def to_accept_invite_code_command(
+        code: str,
+        acting_user_id: str,
+        acting_role: str,
+        force: bool,
+    ) -> AcceptInviteCodeCommand:
+        return AcceptInviteCodeCommand(
+            code=code,
+            acting_user_id=acting_user_id,
+            acting_role=acting_role,
+            force=force,
+        )

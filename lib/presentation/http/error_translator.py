@@ -1,7 +1,9 @@
 from fastapi import HTTPException, status
 
 from application.errors import (
+    AlreadyLinkedError,
     ForbiddenError,
+    InviteCodeNotFoundError,
     ProfileNotFoundError,
     RelationConflictError,
     RelationNotFoundError,
@@ -14,9 +16,20 @@ from application.errors import (
 class ErrorTranslator:
     @staticmethod
     def raise_http_error(exc: TenantError) -> None:
+        if isinstance(exc, AlreadyLinkedError):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "reason": exc.reason,
+                    "message": str(exc),
+                    "current_trainer_user_id": exc.current_trainer_user_id,
+                },
+            ) from exc
         if isinstance(exc, RelationConflictError):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
         if isinstance(exc, ProfileNotFoundError):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        if isinstance(exc, InviteCodeNotFoundError):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
         if isinstance(exc, RelationNotFoundError):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
