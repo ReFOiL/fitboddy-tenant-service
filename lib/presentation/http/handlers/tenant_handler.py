@@ -170,10 +170,12 @@ class TenantHttpHandler:
         trainer_user_id: str,
         status: str,
         *,
+        authorization: str,
         page: int | None = None,
         page_size: int | None = None,
         search: str | None = None,
     ) -> tuple[list[TrainerClientRelationResponse], int]:
+        actor = self._require_subject_or_platform_admin(authorization, trainer_user_id)
         try:
             with self._runtime.tenant_service_scope() as tenant_service:
                 relations, total = tenant_service.list_trainer_clients(
@@ -185,34 +187,60 @@ class TenantHttpHandler:
                         search=search,
                     )
                 )
-                return [self._response_factory.from_domain_relation(relation) for relation in relations], total
+                visible = [
+                    self._visible_relation(self._response_factory.from_domain_relation(relation), actor)
+                    for relation in relations
+                ]
+                return visible, total
         except TenantError as exc:
             self._error_translator.raise_http_error(exc)
         raise AssertionError("unreachable")
 
-    def list_incoming_invites(self, client_user_id: str) -> list[TrainerClientRelationResponse]:
+    def list_incoming_invites(
+        self,
+        client_user_id: str,
+        *,
+        authorization: str,
+        page: int | None = None,
+        page_size: int | None = None,
+    ) -> tuple[list[TrainerClientRelationResponse], int]:
+        actor = self._require_subject_or_platform_admin(authorization, client_user_id)
         try:
             with self._runtime.tenant_service_scope() as tenant_service:
-                relations = tenant_service.list_incoming_invites(
-                    self._request_factory.to_list_incoming_invites_command(client_user_id)
+                relations, total = tenant_service.list_incoming_invites(
+                    self._request_factory.to_list_incoming_invites_command(
+                        client_user_id,
+                        page=page,
+                        page_size=page_size,
+                    )
                 )
-                return [self._response_factory.from_domain_relation(relation) for relation in relations]
+                visible = [
+                    self._visible_relation(self._response_factory.from_domain_relation(relation), actor)
+                    for relation in relations
+                ]
+                return visible, total
         except TenantError as exc:
             self._error_translator.raise_http_error(exc)
         raise AssertionError("unreachable")
 
-    def get_client_active_relation(self, client_user_id: str) -> TrainerClientRelationResponse:
+    def get_client_active_relation(
+        self,
+        client_user_id: str,
+        authorization: str,
+    ) -> TrainerClientRelationResponse:
+        actor = self._require_subject_or_platform_admin(authorization, client_user_id)
         try:
             with self._runtime.tenant_service_scope() as tenant_service:
                 relation = tenant_service.get_client_active_relation(
                     self._request_factory.to_get_client_active_relation_command(client_user_id)
                 )
-                return self._response_factory.from_domain_relation(relation)
+                return self._visible_relation(self._response_factory.from_domain_relation(relation), actor)
         except TenantError as exc:
             self._error_translator.raise_http_error(exc)
         raise AssertionError("unreachable")
 
-    def get_trainer_funnel(self, trainer_user_id: str) -> TrainerFunnelResponse:
+    def get_trainer_funnel(self, trainer_user_id: str, authorization: str) -> TrainerFunnelResponse:
+        self._require_subject_or_platform_admin(authorization, trainer_user_id)
         try:
             with self._runtime.tenant_service_scope() as tenant_service:
                 funnel = tenant_service.get_trainer_funnel(
@@ -372,6 +400,28 @@ class TenantHttpHandler:
         provided = (service_token or "").strip()
         if not expected or not provided or not compare_digest(provided, expected):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid service token")
+
+    def _require_subject_or_platform_admin(self, authorization: str, subject_user_id: str) -> AuthUser:
+        actor = self._require_current_user(authorization)
+        if actor.user_id == subject_user_id or actor.role == "platform_admin":
+            return actor
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden")
+
+    @staticmethod
+    def _visible_relation(
+        relation: TrainerClientRelationResponse,
+        actor: AuthUser,
+    ) -> TrainerClientRelationResponse:
+        if actor.role == "platform_admin":
+            return relation
+        hidden: dict[str, None] = {}
+        if actor.user_id != relation.trainer_user_id:
+            hidden["trainer_login"] = None
+        if actor.user_id != relation.client_user_id:
+            hidden["client_login"] = None
+        if not hidden:
+            return relation
+        return relation.model_copy(update=hidden)
 
     def _require_current_user(self, authorization: str) -> AuthUser:
         access_token = authorization.removeprefix("Bearer ").strip()

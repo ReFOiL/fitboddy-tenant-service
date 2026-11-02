@@ -59,6 +59,7 @@ class TenantService:
     _INVITE_CODE_ATTEMPTS = 8
     _INVITE_CODE_SOURCE = "invite_code"
     _INVITE_PATH_PREFIX = "/i/"
+    _MAX_LIST_PAGE_SIZE = 50
 
     def __init__(
         self,
@@ -190,8 +191,17 @@ class TenantService:
             client_login=relation_logins.get(relation.client_user_id),
         )
 
-    def list_incoming_invites(self, command: ListIncomingInvitesCommand) -> list[TrainerClientRelation]:
-        relations = self._relations.list_incoming_invites(command.client_user_id)
+    def list_incoming_invites(
+        self,
+        command: ListIncomingInvitesCommand,
+    ) -> tuple[list[TrainerClientRelation], int]:
+        offset, limit = self._capped_pagination_window(command.page, command.page_size)
+        relations = self._relations.list_incoming_invites(
+            command.client_user_id,
+            offset=offset,
+            limit=limit,
+        )
+        total = self._relations.count_incoming_invites(command.client_user_id)
         relation_user_ids = list(
             {
                 user_id
@@ -207,7 +217,7 @@ class TenantService:
                 client_login=logins_map.get(item.client_user_id),
             )
             for item in relations
-        ]
+        ], total
 
     def get_client_active_relation(self, command: GetClientActiveRelationCommand) -> TrainerClientRelation:
         relation = self._relations.find_active_by_client(command.client_user_id)
@@ -379,19 +389,15 @@ class TenantService:
 
         statuses = ["ended", "left"] if command.status == "ended" else [command.status]
         search = self._normalize_search(command.search)
-        offset, limit = self._pagination_window(command.page, command.page_size)
+        offset, limit = self._capped_pagination_window(command.page, command.page_size)
         if search is None:
-            if limit is None:
-                relations = self._relations.list_by_trainer_statuses(command.trainer_user_id, statuses)
-                total = len(relations)
-            else:
-                relations = self._relations.list_by_trainer_statuses(
-                    command.trainer_user_id,
-                    statuses,
-                    offset=offset,
-                    limit=limit,
-                )
-                total = self._relations.count_by_trainer_statuses(command.trainer_user_id, statuses)
+            relations = self._relations.list_by_trainer_statuses(
+                command.trainer_user_id,
+                statuses,
+                offset=offset,
+                limit=limit,
+            )
+            total = self._relations.count_by_trainer_statuses(command.trainer_user_id, statuses)
             page_client_ids = [relation.client_user_id for relation in relations]
             names_map = self._resolve_names(page_client_ids)
             logins_map = self._resolve_logins(
@@ -415,7 +421,7 @@ class TenantService:
             for relation_id, client_user_id in id_pairs
             if search.lower() in names_map.get(client_user_id, "").lower() or search.lower() in client_user_id.lower()
         ]
-        paged_ids = self._paginate_collection(matched_ids, command.page, command.page_size)
+        paged_ids = matched_ids[offset : offset + limit]
         relations = self._relations.list_by_ids(paged_ids)
         logins_map = self._resolve_logins(
             list({user_id for relation in relations for user_id in (relation.trainer_user_id, relation.client_user_id)})
@@ -670,6 +676,17 @@ class TenantService:
         if self._auth_gateway is None:
             return {}
         return self._auth_gateway.get_logins_by_user_ids(user_ids)
+
+    @staticmethod
+    def _capped_pagination_window(page: int | None, page_size: int | None) -> tuple[int, int]:
+        resolved_page = 1 if page is None else page
+        if page_size is None:
+            resolved_size = TenantService._MAX_LIST_PAGE_SIZE
+        else:
+            resolved_size = min(page_size, TenantService._MAX_LIST_PAGE_SIZE)
+        if resolved_page < 1 or resolved_size < 1:
+            raise ValidationError("invalid pagination")
+        return (resolved_page - 1) * resolved_size, resolved_size
 
     @staticmethod
     def _pagination_window(page: int | None, page_size: int | None) -> tuple[int, int | None]:
