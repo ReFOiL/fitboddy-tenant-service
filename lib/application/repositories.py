@@ -181,7 +181,13 @@ class TrainerClientRelationRepository:
         by_id = {row.relation_id: row for row in rows}
         return [by_id[relation_id] for relation_id in relation_ids if relation_id in by_id]
 
-    def list_incoming_invites(self, client_user_id: str) -> list[TrainerClientRelationModel]:
+    def list_incoming_invites(
+        self,
+        client_user_id: str,
+        *,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> list[TrainerClientRelationModel]:
         statement = (
             select(TrainerClientRelationModel)
             .where(
@@ -190,7 +196,18 @@ class TrainerClientRelationRepository:
             )
             .order_by(TrainerClientRelationModel.updated_at.desc())
         )
+        if limit is not None:
+            statement = statement.offset(offset).limit(limit)
         return list(self._session.scalars(statement).all())
+
+    def count_incoming_invites(self, client_user_id: str) -> int:
+        count = self._session.scalar(
+            select(func.count(TrainerClientRelationModel.relation_id)).where(
+                TrainerClientRelationModel.client_user_id == client_user_id,
+                TrainerClientRelationModel.status == "invited",
+            )
+        )
+        return int(count or 0)
 
     def count_by_trainer_statuses(
         self,

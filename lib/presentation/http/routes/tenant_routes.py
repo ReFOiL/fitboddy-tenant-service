@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Header, Query, Request, Response, status
+from fastapi import APIRouter, Header, HTTPException, Query, Request, Response, status
+
+from presentation.http.rate_limit import caller_keys, list_route_limiter
 
 from presentation.http.schemas import (
     CompatMembershipCheckRequest,
@@ -201,13 +203,16 @@ class TenantRoutes:
         response: Response,
         trainer_user_id: str,
         status: str = "active",
-        page: int | None = Query(default=None, ge=1),
-        page_size: int | None = Query(default=None, ge=1, le=_MAX_PAGE_SIZE),
+        page: int = Query(default=1, ge=1),
+        page_size: int = Query(default=_MAX_PAGE_SIZE, ge=1, le=_MAX_PAGE_SIZE),
         search: str | None = Query(default=None, min_length=1, max_length=64),
+        authorization: str = Header(default="", alias="Authorization"),
     ) -> list[TrainerClientRelationResponse]:
+        TenantRoutes._enforce_list_rate_limit(request, authorization)
         relations, total = request.app.state.tenant_handler.list_trainer_clients(
             trainer_user_id,
             status,
+            authorization=authorization,
             page=page,
             page_size=page_size,
             search=search,
@@ -216,16 +221,39 @@ class TenantRoutes:
         return relations
 
     @staticmethod
-    def list_incoming_invites(request: Request, client_user_id: str) -> list[TrainerClientRelationResponse]:
-        return request.app.state.tenant_handler.list_incoming_invites(client_user_id)
+    def list_incoming_invites(
+        request: Request,
+        response: Response,
+        client_user_id: str,
+        page: int = Query(default=1, ge=1),
+        page_size: int = Query(default=_MAX_PAGE_SIZE, ge=1, le=_MAX_PAGE_SIZE),
+        authorization: str = Header(default="", alias="Authorization"),
+    ) -> list[TrainerClientRelationResponse]:
+        TenantRoutes._enforce_list_rate_limit(request, authorization)
+        relations, total = request.app.state.tenant_handler.list_incoming_invites(
+            client_user_id,
+            authorization=authorization,
+            page=page,
+            page_size=page_size,
+        )
+        TenantRoutes._set_pagination_headers(response, page, page_size, total)
+        return relations
 
     @staticmethod
-    def get_client_active_relation(request: Request, client_user_id: str) -> TrainerClientRelationResponse:
-        return request.app.state.tenant_handler.get_client_active_relation(client_user_id)
+    def get_client_active_relation(
+        request: Request,
+        client_user_id: str,
+        authorization: str = Header(default="", alias="Authorization"),
+    ) -> TrainerClientRelationResponse:
+        return request.app.state.tenant_handler.get_client_active_relation(client_user_id, authorization)
 
     @staticmethod
-    def get_trainer_funnel(request: Request, trainer_user_id: str) -> TrainerFunnelResponse:
-        return request.app.state.tenant_handler.get_trainer_funnel(trainer_user_id)
+    def get_trainer_funnel(
+        request: Request,
+        trainer_user_id: str,
+        authorization: str = Header(default="", alias="Authorization"),
+    ) -> TrainerFunnelResponse:
+        return request.app.state.tenant_handler.get_trainer_funnel(trainer_user_id, authorization)
 
     @staticmethod
     def get_trainer_publication_status(request: Request, trainer_user_id: str) -> TrainerPublicationStatusResponse:
@@ -256,6 +284,12 @@ class TenantRoutes:
     ) -> CompatMembershipCheckResponse:
         _ = tenant_id
         return request.app.state.tenant_handler.compat_check_membership(payload)
+
+    @staticmethod
+    def _enforce_list_rate_limit(request: Request, authorization: str) -> None:
+        host = request.client.host if request.client is not None else None
+        if not list_route_limiter.allow(caller_keys(host=host, authorization=authorization)):
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="rate limit exceeded")
 
     @staticmethod
     def _set_pagination_headers(response: Response, page: int | None, page_size: int | None, total: int) -> None:

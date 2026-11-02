@@ -48,6 +48,8 @@ class ListDiscoveryProfilesCommand:
 @dataclass(frozen=True)
 class ListIncomingInvitesCommand:
     client_user_id: str
+    page: int | None = None
+    page_size: int | None = None
 
 
 @dataclass(frozen=True)

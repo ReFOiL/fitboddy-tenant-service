@@ -150,7 +150,10 @@ def test_create_accept_leave_relation_flow() -> None:
     assert accept_response.status_code == 200
     assert accept_response.json()["status"] == "active"
 
-    list_response = client.get("/api/v1/marketplace/trainers/trainer_2/clients?status=active")
+    list_response = client.get(
+        "/api/v1/marketplace/trainers/trainer_2/clients?status=active",
+        headers=auth_as("trainer_2"),
+    )
     assert list_response.status_code == 200
     assert len(list_response.json()) == 1
 
@@ -204,7 +207,10 @@ def test_invite_flow_with_incoming_list_and_decline() -> None:
     assert create_response.status_code == 201
     relation_id = create_response.json()["relation_id"]
 
-    incoming_response = client.get("/api/v1/marketplace/clients/client_5/invites")
+    incoming_response = client.get(
+        "/api/v1/marketplace/clients/client_5/invites",
+        headers=auth_as("client_5"),
+    )
     assert incoming_response.status_code == 200
     incoming = incoming_response.json()
     assert len(incoming) == 1
@@ -218,7 +224,10 @@ def test_invite_flow_with_incoming_list_and_decline() -> None:
     assert decline_response.status_code == 200
     assert decline_response.json()["status"] == "declined"
 
-    incoming_after_decline = client.get("/api/v1/marketplace/clients/client_5/invites")
+    incoming_after_decline = client.get(
+        "/api/v1/marketplace/clients/client_5/invites",
+        headers=auth_as("client_5"),
+    )
     assert incoming_after_decline.status_code == 200
     assert incoming_after_decline.json() == []
 
@@ -419,12 +428,18 @@ def test_trainer_closed_statuses_are_separated() -> None:
     assert ended.status_code == 200
     assert ended.json()["status"] == "ended"
 
-    declined_list = client.get("/api/v1/marketplace/trainers/trainer_7/clients?status=declined")
+    declined_list = client.get(
+        "/api/v1/marketplace/trainers/trainer_7/clients?status=declined",
+        headers=auth_as("trainer_7"),
+    )
     assert declined_list.status_code == 200
     assert len(declined_list.json()) == 1
     assert declined_list.json()[0]["client_user_id"] == "client_7a"
 
-    ended_list = client.get("/api/v1/marketplace/trainers/trainer_7/clients?status=ended")
+    ended_list = client.get(
+        "/api/v1/marketplace/trainers/trainer_7/clients?status=ended",
+        headers=auth_as("trainer_7"),
+    )
     assert ended_list.status_code == 200
     assert len(ended_list.json()) == 1
     assert ended_list.json()[0]["client_user_id"] == "client_7b"
@@ -479,7 +494,8 @@ def test_trainer_clients_support_pagination_search_and_source_filter() -> None:
 
     response = client.get(
         f"/api/v1/marketplace/trainers/{trainer_id}/clients"
-        f"?status=active&page=1&page_size=1&search={invite_client_id}"
+        f"?status=active&page=1&page_size=1&search={invite_client_id}",
+        headers=auth_as(trainer_id),
     )
     assert response.status_code == 200
     payload = response.json()
@@ -549,7 +565,10 @@ def test_trainer_funnel_metrics() -> None:
     assert accept.status_code == 200
     assert accept.json()["status"] == "active"
 
-    funnel_response = client.get("/api/v1/marketplace/trainers/trainer_8/funnel")
+    funnel_response = client.get(
+        "/api/v1/marketplace/trainers/trainer_8/funnel",
+        headers=auth_as("trainer_8"),
+    )
     assert funnel_response.status_code == 200
     funnel = funnel_response.json()
     assert funnel["trainer_user_id"] == "trainer_8"
@@ -595,7 +614,10 @@ def test_get_client_active_relation() -> None:
         },
     )
     assert create_response.status_code == 201
-    active_relation = client.get("/api/v1/marketplace/clients/client_9/active-relation")
+    active_relation = client.get(
+        "/api/v1/marketplace/clients/client_9/active-relation",
+        headers=auth_as("client_9"),
+    )
     assert active_relation.status_code == 200
     body = active_relation.json()
     assert body["trainer_user_id"] == "trainer_9"

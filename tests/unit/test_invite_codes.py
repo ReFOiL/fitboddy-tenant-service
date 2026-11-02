@@ -123,11 +123,17 @@ def test_accept_invite_code_creates_profile_for_new_client(api: TestClient) -> N
     )
     assert profile.json() == {"exists": True, "role": "client"}
 
-    clients = api.get(f"/api/v1/marketplace/trainers/{trainer_id}/clients?status=active")
+    clients = api.get(
+        f"/api/v1/marketplace/trainers/{trainer_id}/clients?status=active",
+        headers=auth_as(trainer_id),
+    )
     assert clients.status_code == 200
     assert [item["relation_id"] for item in clients.json()] == [relation["relation_id"]]
 
-    funnel = api.get(f"/api/v1/marketplace/trainers/{trainer_id}/funnel")
+    funnel = api.get(
+        f"/api/v1/marketplace/trainers/{trainer_id}/funnel",
+        headers=auth_as(trainer_id),
+    )
     assert funnel.status_code == 200
     assert funnel.json()["invites_sent"] == 0
     assert funnel.json()["active_clients"] == 1
@@ -202,7 +208,10 @@ def test_accept_invite_code_is_idempotent_for_same_trainer(api: TestClient) -> N
     assert first.json()["source"] == "direct"
     assert second.json()["source"] == "direct"
 
-    clients = api.get(f"/api/v1/marketplace/trainers/{trainer_id}/clients?status=active")
+    clients = api.get(
+        f"/api/v1/marketplace/trainers/{trainer_id}/clients?status=active",
+        headers=auth_as(trainer_id),
+    )
     assert [item["relation_id"] for item in clients.json()] == [relation_id]
 
 
@@ -237,12 +246,18 @@ def test_accept_invite_code_conflicts_when_linked_to_another_trainer(api: TestCl
         "current_trainer_user_id": other_trainer_id,
     }
 
-    active = api.get(f"/api/v1/marketplace/clients/{client_id}/active-relation")
+    active = api.get(
+        f"/api/v1/marketplace/clients/{client_id}/active-relation",
+        headers=auth_as(client_id),
+    )
     assert active.status_code == 200
     assert active.json()["relation_id"] == relation_id
     assert active.json()["trainer_user_id"] == other_trainer_id
 
-    invited_clients = api.get(f"/api/v1/marketplace/trainers/{trainer_id}/clients?status=active")
+    invited_clients = api.get(
+        f"/api/v1/marketplace/trainers/{trainer_id}/clients?status=active",
+        headers=auth_as(trainer_id),
+    )
     assert invited_clients.json() == []
 
 
@@ -276,9 +291,15 @@ def test_accept_invite_code_force_switches_trainer(api: TestClient) -> None:
     assert relation["status"] == "active"
     assert relation["source"] == "invite_code"
 
-    active = api.get(f"/api/v1/marketplace/clients/{client_id}/active-relation")
+    active = api.get(
+        f"/api/v1/marketplace/clients/{client_id}/active-relation",
+        headers=auth_as(client_id),
+    )
     assert active.json()["trainer_user_id"] == trainer_id
-    ended = api.get(f"/api/v1/marketplace/trainers/{other_trainer_id}/clients?status=ended")
+    ended = api.get(
+        f"/api/v1/marketplace/trainers/{other_trainer_id}/clients?status=ended",
+        headers=auth_as(other_trainer_id),
+    )
     assert any(item["client_user_id"] == client_id and item["status"] == "ended" for item in ended.json())
 
 
@@ -309,5 +330,8 @@ def test_trainer_cannot_accept_invite_code(api: TestClient, monkeypatch: pytest.
     )
     assert profile.json()["exists"] is False
 
-    active = api.get(f"/api/v1/marketplace/clients/{other_trainer_id}/active-relation")
+    active = api.get(
+        f"/api/v1/marketplace/clients/{other_trainer_id}/active-relation",
+        headers=auth_as(other_trainer_id),
+    )
     assert active.status_code == 404

@@ -80,8 +80,12 @@ class TenantRequestFactory:
         return ListDiscoveryProfilesCommand(page=page, page_size=page_size, search=search)
 
     @staticmethod
-    def to_list_incoming_invites_command(client_user_id: str) -> ListIncomingInvitesCommand:
-        return ListIncomingInvitesCommand(client_user_id=client_user_id)
+    def to_list_incoming_invites_command(
+        client_user_id: str,
+        page: int | None = None,
+        page_size: int | None = None,
+    ) -> ListIncomingInvitesCommand:
+        return ListIncomingInvitesCommand(client_user_id=client_user_id, page=page, page_size=page_size)
 
     @staticmethod
     def to_get_client_active_relation_command(client_user_id: str) -> GetClientActiveRelationCommand:

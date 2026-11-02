@@ -22,20 +22,27 @@
 - `POST /api/v1/marketplace/trainers/me/invite-link/rotate` - заменить код. Предыдущий код сразу перестаёт находиться. Если кода ещё не было, создаётся первый
 - `GET /api/v1/marketplace/invite/{code}` - публичное превью приглашения без авторизации (`code`, `trainer_user_id`, `trainer_display_name`, `trainer_login`). 404, если код неизвестен
 - `POST /api/v1/marketplace/invite/{code}/accept` - клиент принимает код и получает активную связь с тренером. Необязательный query-параметр `force=true`
-- `GET /api/v1/marketplace/trainers/{trainer_user_id}/clients?status=active` - клиенты тренера
-- `GET /api/v1/marketplace/trainers/{trainer_user_id}/clients?status=invited` - отправленные приглашения тренера
-- `GET /api/v1/marketplace/trainers/{trainer_user_id}/clients?status=declined` - отклоненные приглашения тренера
-- `GET /api/v1/marketplace/trainers/{trainer_user_id}/clients?status=ended` - завершенные активные связи тренера
-- `GET /api/v1/marketplace/trainers/{trainer_user_id}/funnel` - бизнес-метрики воронки (`invites_sent`, `invites_pending`, `invites_accepted`, `invites_declined`, `active_clients`, `invite_acceptance_rate`)
+- `GET /api/v1/marketplace/trainers/{trainer_user_id}/clients?status=active` - клиенты тренера. Нужен `Authorization: Bearer`. Читать может этот тренер (`user_id` из токена) или `platform_admin`
+- `GET /api/v1/marketplace/trainers/{trainer_user_id}/clients?status=invited` - отправленные приглашения тренера (тот же доступ)
+- `GET /api/v1/marketplace/trainers/{trainer_user_id}/clients?status=declined` - отклоненные приглашения тренера (тот же доступ)
+- `GET /api/v1/marketplace/trainers/{trainer_user_id}/clients?status=ended` - завершенные активные связи тренера (тот же доступ)
+- `GET /api/v1/marketplace/trainers/{trainer_user_id}/funnel` - бизнес-метрики воронки (`invites_sent`, `invites_pending`, `invites_accepted`, `invites_declined`, `active_clients`, `invite_acceptance_rate`). Нужен Bearer этого тренера или `platform_admin`
 - `GET /api/v1/marketplace/trainers/{trainer_user_id}/publication-status` - статус публикации тренера (`is_published`)
-- `GET /api/v1/marketplace/clients/{client_user_id}/invites` - входящие приглашения клиента
+- `GET /api/v1/marketplace/clients/{client_user_id}/invites` - входящие приглашения клиента. Нужен Bearer этого клиента или `platform_admin`
+- `GET /api/v1/marketplace/clients/{client_user_id}/active-relation` - активная связь клиента. Нужен Bearer этого клиента или `platform_admin`
 - `POST /api/v1/marketplace/profiles/check` - проверить существование профиля и роль (`exists`, `role`)
 - `GET /api/v1/marketplace/internal/relations/access` - internal ACL для чата (`X-Service-Token`, `allowed`/`relation_id`/`status`)
 
-Ответы discovery/relations дополнительно включают `login` (если доступен из `auth-service`).
+Ответы discovery/relations дополнительно включают `login` (если доступен из `auth-service`). В ответах списка клиентов тренера, входящих приглашений и активной связи `trainer_login` виден только самому тренеру или `platform_admin`, а `client_login` — только самому клиенту или `platform_admin`. Для остальных вызывающих эти поля равны `null`.
+
+Списки клиентов и входящих приглашений всегда постраничные. Если `page` или `page_size` не переданы, используется `page=1` и `page_size=50`. Больше 50 записей за запрос вернуть нельзя. В ответе есть заголовки `X-Total-Count`, `X-Page`, `X-Page-Size`.
+
+На эти два списка действует процессный лимит: 60 запросов в минуту на IP и, если передан Bearer, отдельно на токен. При превышении — `429`. Счётчики живут в памяти процесса и между репликами не разделяются.
 
 Правила:
 - Write-операции связей требуют `Authorization: Bearer <access_token>`; actor = `user_id` из токена.
+- Чтение списка клиентов и воронки доступно только этому тренеру или `platform_admin`.
+- Чтение входящих приглашений и активной связи доступно только этому клиенту или `platform_admin`.
 - `invite` может создавать только тренер (actor == `trainer_user_id`).
 - `direct` может создавать тренер или клиент (actor должен быть участником пары).
 - `accept` может выполнять только приглашенный клиент.
